@@ -1,0 +1,178 @@
+import { app, BrowserWindow, ipcMain, nativeTheme } from 'electron';
+import path from 'node:path';
+import { promises as fs } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
+
+
+let win;
+const isDev = !app.isPackaged;
+const tasksFile = () => path.join(app.getPath('userData'), 'tasks.json');
+const boundsFile = () => path.join(app.getPath('userData'), 'window-bounds.json');
+
+
+async function ensureTasksFile() {
+try { await fs.access(tasksFile()); }
+catch { await fs.writeFile(tasksFile(), '[]', 'utf-8'); }
+}
+
+
+async function readTasks() {
+await ensureTasksFile();
+const raw = await fs.readFile(tasksFile(), 'utf-8');
+try { return JSON.parse(raw); } catch { return []; }
+}
+
+
+async function writeTasks(tasks) {
+await fs.writeFile(tasksFile(), JSON.stringify(tasks, null, 2), 'utf-8');
+}
+
+
+// Resolve __dirname in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+async function readBounds() {
+	try {
+		const raw = await fs.readFile(boundsFile(), 'utf-8');
+		const b = JSON.parse(raw);
+		if (!b || typeof b !== 'object') return null;
+		return b;
+	} catch { return null; }
+}
+
+async function writeBounds(bounds) {
+	try { await fs.writeFile(boundsFile(), JSON.stringify(bounds), 'utf-8'); } catch {}
+}
+
+async function createWindow() {
+	const saved = await readBounds();
+	win = new BrowserWindow({
+		width: saved?.width || 360,
+		height: saved?.height || 520,
+		x: saved?.x,
+		y: saved?.y,
+		minWidth: 300,
+		minHeight: 380,
+		resizable: true,
+		maximizable: true,
+		...(process.platform === 'win32' ? { thickFrame: true } : {}),
+		center: saved ? false : true,
+		show: true,
+		frame: false, // clean floating look
+		transparent: false,
+		alwaysOnTop: false, // default unpinned; toggle via button
+		skipTaskbar: false, // keep it visible in taskbar/dock
+		vibrancy: process.platform === 'darwin' ? 'window' : undefined,
+		visualEffectState: process.platform === 'darwin' ? 'active' : undefined,
+			webPreferences: {
+				preload: path.join(__dirname, 'preload.cjs'),
+			nodeIntegration: false,
+			contextIsolation: true,
+				sandbox: false,
+			spellcheck: false
+		}
+	});
+
+		if (isDev) win.webContents.openDevTools({ mode: 'detach' });
+
+	win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+
+		win.on('close', () => {
+			try {
+				const b = win.getBounds();
+				writeBounds(b);
+			} catch {}
+		});
+}
+
+// App lifecycle
+app.whenReady().then(async () => {
+	// Prefer system theme on first run
+	try {
+		const prefPath = path.join(app.getPath('userData'), 'ui-prefs.json');
+		let themePref;
+		try { themePref = JSON.parse(await fs.readFile(prefPath, 'utf-8')).theme; } catch {}
+		if (!themePref) {
+			const isLight = nativeTheme.shouldUseDarkColors === false;
+			await fs.writeFile(prefPath, JSON.stringify({ theme: isLight ? 'light' : 'dark' }), 'utf-8');
+		}
+	} catch {}
+
+	await createWindow();
+
+	app.on('activate', () => {
+		if (BrowserWindow.getAllWindows().length === 0) createWindow();
+	});
+});
+
+app.on('window-all-closed', () => {
+	if (process.platform !== 'darwin') app.quit();
+});
+
+
+// IPC — tasks CRUD
+ipcMain.handle('tasks:load', async () => {
+const tasks = await readTasks();
+// sort: incomplete first, then recent
+tasks.sort((a, b) => Number(a.completed) - Number(b.completed) || (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+return tasks;
+});
+
+
+ipcMain.handle('tasks:create', async (_evt, title) => {
+const t = title?.trim();
+if (!t) return { ok: false, error: 'empty' };
+const tasks = await readTasks();
+const task = { id: crypto.randomUUID(), title: t, completed: false, createdAt: Date.now() };
+tasks.unshift(task);
+await writeTasks(tasks);
+return { ok: true, task };
+});
+
+
+ipcMain.handle('tasks:update', async (_evt, { id, patch }) => {
+const tasks = await readTasks();
+const i = tasks.findIndex(t => t.id === id);
+if (i === -1) return { ok: false, error: 'not_found' };
+const prev = tasks[i];
+const next = { ...prev, ...patch, updatedAt: Date.now() };
+if (patch?.completed === true && !prev.completed) next.completedAt = Date.now();
+if (patch?.completed === false) delete next.completedAt;
+tasks[i] = next;
+await writeTasks(tasks);
+return { ok: true, task: next };
+});
+
+
+ipcMain.handle('tasks:delete', async (_evt, id) => {
+	const tasks = await readTasks();
+	const next = tasks.filter(t => t.id !== id);
+	await writeTasks(next);
+	return { ok: true };
+});
+
+// Clear completed tasks
+ipcMain.handle('tasks:clearCompleted', async () => {
+	const tasks = await readTasks();
+	const next = tasks.filter(t => !t.completed);
+	const removed = tasks.length - next.length;
+	await writeTasks(next);
+	return { ok: true, removed };
+});
+
+// Window controls
+ipcMain.handle('window:togglePin', () => {
+	if (!win) return { pinned: false };
+	const pinned = !win.isAlwaysOnTop();
+	// Use a level to ensure it stays above normal windows
+	win.setAlwaysOnTop(pinned, 'screen-saver');
+	return { pinned };
+});
+
+ipcMain.handle('window:close', () => { win?.close(); });
+ipcMain.handle('window:minimize', () => { win?.minimize(); });
+
+// Query current pin state
+ipcMain.handle('window:getPin', () => ({ pinned: !!win?.isAlwaysOnTop() }));
