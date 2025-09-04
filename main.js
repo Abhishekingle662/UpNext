@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeTheme } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeTheme, dialog } from 'electron';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,7 @@ let win;
 const isDev = !app.isPackaged;
 const tasksFile = () => path.join(app.getPath('userData'), 'tasks.json');
 const boundsFile = () => path.join(app.getPath('userData'), 'window-bounds.json');
+const uiPrefsPath = () => path.join(app.getPath('userData'), 'ui-prefs.json');
 
 
 async function ensureTasksFile() {
@@ -44,6 +45,17 @@ async function readBounds() {
 
 async function writeBounds(bounds) {
 	try { await fs.writeFile(boundsFile(), JSON.stringify(bounds), 'utf-8'); } catch {}
+}
+
+async function readUIPrefs() {
+	try {
+		const raw = await fs.readFile(uiPrefsPath(), 'utf-8');
+		return JSON.parse(raw) || {};
+	} catch { return {}; }
+}
+
+async function writeUIPrefs(prefs) {
+	try { await fs.writeFile(uiPrefsPath(), JSON.stringify(prefs, null, 2), 'utf-8'); } catch {}
 }
 
 async function createWindow() {
@@ -91,16 +103,39 @@ async function createWindow() {
 app.whenReady().then(async () => {
 	// Prefer system theme on first run
 	try {
-		const prefPath = path.join(app.getPath('userData'), 'ui-prefs.json');
-		let themePref;
-		try { themePref = JSON.parse(await fs.readFile(prefPath, 'utf-8')).theme; } catch {}
-		if (!themePref) {
+		const prefs = await readUIPrefs();
+		if (!prefs.theme) {
 			const isLight = nativeTheme.shouldUseDarkColors === false;
-			await fs.writeFile(prefPath, JSON.stringify({ theme: isLight ? 'light' : 'dark' }), 'utf-8');
+			prefs.theme = isLight ? 'light' : 'dark';
+			await writeUIPrefs(prefs);
 		}
 	} catch {}
 
 	await createWindow();
+
+	// One-time welcome note after install/first run
+	try {
+		const prefs = await readUIPrefs();
+		if (!prefs.welcomeShown) {
+			prefs.welcomeShown = true;
+			await writeUIPrefs(prefs);
+			await dialog.showMessageBox(win, {
+				type: 'info',
+				title: 'Welcome to UpNext',
+				message: 'Quick start',
+				detail: [
+					'• Add a task and press Enter',
+					'• Double‑click to rename; click the checkbox to complete',
+					'• 📌 pins the window on top; Clear Completed removes done items',
+						'• Drag the top bar to move; resize from edges; 🌗 toggles theme',
+						'• Voice mode is coming soon!!'
+
+            
+				].join('\n'),
+				buttons: ['Got it']
+			});
+		}
+	} catch {}
 
 	app.on('activate', () => {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow();
