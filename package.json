@@ -1,15 +1,54 @@
 {
-"name": "floatdo",
+"name": "upnext",
 "version": "0.1.0",
 "private": true,
 "type": "module",
 "main": "main.js",
+"description": "An always-on-top, minimalist to-do app that keeps tasks visible so you capture and finish work faster.",
+"author": "Abhishek Ingle (Abhishekingle662)",
+"license": "MIT",
+"repository": {
+	"type": "git",
+	"url": "https://github.com/Abhishekingle662/UpNext.git"
+},
+"homepage": "https://github.com/Abhishekingle662/UpNext",
 "scripts": {
 "start": "electron .",
-"dev": "electronmon ."
+"dev": "electronmon .",
+"pack": "electron-builder --dir",
+"dist": "electron-builder"
 },
 "devDependencies": {
 "electron": "^31.3.0",
-"electronmon": "^2.0.2"
+"electronmon": "^2.0.2",
+"electron-builder": "^24.13.3"
+},
+"build": {
+	"appId": "com.abhi.upnext",
+	"productName": "UpNext",
+	"asar": true,
+	"files": [
+		"main.js",
+		"preload.cjs",
+		"renderer/**/*",
+		"package.json",
+		"assets/**"
+	],
+	"win": {
+		"target": [
+			{
+				"target": "nsis",
+				"arch": ["x64"]
+			}
+		],
+		"artifactName": "${productName}-Setup-${version}.${ext}",
+		"icon": "assets/icon.ico",
+		"publisherName": ["Abhishek Ingle"]
+	},
+	"nsis": {
+		"oneClick": true,
+		"perMachine": false,
+		"allowToChangeInstallationDirectory": false
+	}
 }
 }

@@ -63,7 +63,7 @@ async function createWindow() {
 		frame: false, // clean floating look
 		transparent: false,
 		alwaysOnTop: false, // default unpinned; toggle via button
-		skipTaskbar: false, // keep it visible in taskbar/dock
+		icon: path.join(__dirname, 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
 		vibrancy: process.platform === 'darwin' ? 'window' : undefined,
 		visualEffectState: process.platform === 'darwin' ? 'active' : undefined,
 			webPreferences: {
