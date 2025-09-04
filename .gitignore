@@ -1,0 +1,29 @@
+# Node/Electron
+node_modules/
+dist/
+out/
+build/
+coverage/
+*.log
+*.pid
+.DS_Store
+Thumbs.db
+
+# Electron / platform binaries
+/node_modules/electron/
+*.exe
+*.dmg
+*.AppImage
+*.asar
+
+# Env and editor
+.env*
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS junk
+*.orig
+*.tgz
+*.zip
