@@ -33,7 +33,7 @@ main { padding: 12px; }
 
 
 .list { list-style: none; padding: 0; margin: 0; display:flex; flex-direction: column; gap: 8px; }
-.item { display:grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items:center; padding: 8px 10px; border:1px solid var(--border); border-radius: 12px; background: #0e1220; box-shadow: var(--shadow); }
+.item { display:grid; grid-template-columns: 20px 24px 1fr auto; gap: 8px; align-items:center; padding: 8px 10px; border:1px solid var(--border); border-radius: 12px; background: #0e1220; box-shadow: var(--shadow); transition: all 0.2s ease; }
 :root.light .item { background:#fff; }
 
 
@@ -65,3 +65,30 @@ main { padding: 12px; }
 .empty-title { font-weight: 600; color: var(--fg); }
 .empty-sub { font-size: 12px; }
 .empty-hint { font-size: 12px; opacity:.9; }
+
+/* Meta badges for due time and priority */
+.title, .edit, .meta { grid-column: 3; }
+.meta { display:flex; gap:6px; align-items:center; color: var(--muted); font-size: 12px; }
+.badge { display:inline-flex; align-items:center; gap:4px; padding: 2px 6px; border-radius: 999px; border:1px solid var(--border); background: #111523; color: var(--muted); }
+:root.light .badge { background:#f4f6fb; color:#4b5563; }
+
+/* Due time badges */
+.badge.due.overdue { border-color: #dc2626; color: #fecaca; background: #1f1114; }
+:root.light .badge.due.overdue { background:#fef2f2; color:#b91c1c; border-color:#fecaca; }
+.badge.due.soon { border-color: #d97706; color: #fed7aa; background: #1c1508; }
+:root.light .badge.due.soon { background:#fffbeb; color:#92400e; border-color:#fed7aa; }
+
+/* Priority badges */
+.badge.priority.p3 { border-color: #2563eb; color:#dbeafe; background: #0f172a; }
+:root.light .badge.priority.p3 { background:#eff6ff; color:#1d4ed8; border-color:#dbeafe; }
+.badge.priority.p2 { border-color: #7c3aed; color:#e9d5ff; background: #1e1b3a; }
+:root.light .badge.priority.p2 { background:#f5f3ff; color:#6d28d9; border-color:#e9d5ff; }
+.badge.priority.p1 { border-color: #059669; color:#a7f3d0; background: #0f1b16; }
+:root.light .badge.priority.p1 { background:#ecfdf5; color:#047857; border-color:#a7f3d0; }
+
+/* Drag and drop styles */
+.drag-handle { font-size: 12px; color: var(--muted); cursor: grab; opacity: 0.6; }
+.drag-handle:hover { opacity: 1; }
+.drag-handle:active { cursor: grabbing; }
+.item.dragging { opacity: 0.5; transform: rotate(2deg); }
+.item.drag-over { border-color: var(--accent); background: rgba(110, 168, 254, 0.1); }

@@ -42,7 +42,7 @@
 	<div class="empty-icon">🗒️</div>
 	<div class="empty-title">No tasks yet</div>
 	<div class="empty-sub">Add your first task above and press Enter.</div>
-	<div class="empty-hint">Tip: Double‑click a task to rename it.</div>
+	<div class="empty-hint">Tip: Double‑click to rename • Drag ⋮⋮ to reorder • Add times like "3pm" or "tomorrow 9am"</div>
 	</div>
 <ul id="list" class="list"></ul>
 </main>
@@ -51,12 +51,17 @@
 
 
 <template id="itemTpl">
-<li class="item">
+<li class="item" draggable="true">
+<button class="icon-btn drag-handle" data-role="drag" title="Drag to reorder">⋮⋮</button>
 <label class="checkbox">
 <input type="checkbox" />
 <span class="checkmark">✓</span>
 </label>
 <div class="title" data-role="title"></div>
+<div class="meta">
+  <span class="badge due" data-role="due" hidden></span>
+  <span class="badge priority" data-role="priority" hidden></span>
+  </div>
 <input class="edit" data-role="edit" />
 <button class="icon-btn" data-role="delete" title="Delete">🗑️</button>
 </li>

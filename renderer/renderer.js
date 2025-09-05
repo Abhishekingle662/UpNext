@@ -27,10 +27,59 @@ function makeItem(task) {
 	const title = $('[data-role="title"]', node);
 	const edit = $('[data-role="edit"]', node);
 	const del = $('[data-role="delete"]', node);
+	const dueEl = $('[data-role="due"]', node);
+	const prioEl = $('[data-role="priority"]', node);
+	const dragHandle = $('[data-role="drag"]', node);
 
 	cb.checked = !!task.completed;
 	title.textContent = task.title;
 	title.classList.toggle('completed', task.completed);
+
+	// Meta badges
+	function formatDue(ts) {
+		if (!ts) return '';
+		const d = new Date(ts);
+		const now = new Date();
+		const sameDay = d.toDateString() === now.toDateString();
+		const tomorrow = new Date(now);
+		tomorrow.setDate(now.getDate() + 1);
+		const isTomorrow = d.toDateString() === tomorrow.toDateString();
+		const hh = String(d.getHours()).padStart(2, '0');
+		const mm = String(d.getMinutes()).padStart(2, '0');
+		const time = `${hh}:${mm}`;
+		if (sameDay) return `today ${time}`;
+		if (isTomorrow) return `tomorrow ${time}`;
+		const diffDays = Math.round((d.setHours(0,0,0,0) - now.setHours(0,0,0,0)) / (24*60*60*1000));
+		if (diffDays > 0 && diffDays <= 7) {
+			return d.toLocaleDateString(undefined, { weekday: 'long' }) + ' ' + time;
+		}
+		return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + time;
+	}
+
+	if (dueEl) {
+		const due = task.dueAt;
+		if (due) {
+			dueEl.textContent = formatDue(due);
+			dueEl.hidden = false;
+			dueEl.classList.add('badge', 'due');
+			const overdue = Date.now() > due;
+			dueEl.classList.toggle('overdue', overdue);
+			dueEl.classList.toggle('soon', !overdue);
+		} else {
+			dueEl.hidden = true;
+		}
+	}
+
+	if (prioEl) {
+		const p = Number(task.priority || 0);
+		if (p > 0) {
+			prioEl.textContent = p === 3 ? 'P1' : p === 2 ? 'P2' : 'P3';
+			prioEl.hidden = false;
+			prioEl.className = 'badge priority ' + (p === 3 ? 'p3' : p === 2 ? 'p2' : 'p1');
+		} else {
+			prioEl.hidden = true;
+		}
+	}
 
 	cb.addEventListener('change', async () => {
 		const res = await window.api.updateTask(task.id, { completed: cb.checked });
@@ -74,7 +123,62 @@ function makeItem(task) {
 		}
 	});
 
+	// Drag and drop functionality
+	node.dataset.taskId = task.id;
+	
+	node.addEventListener('dragstart', (e) => {
+		node.classList.add('dragging');
+		e.dataTransfer.setData('text/plain', task.id);
+		e.dataTransfer.effectAllowed = 'move';
+	});
+
+	node.addEventListener('dragend', () => {
+		node.classList.remove('dragging');
+		document.querySelectorAll('.item').forEach(item => item.classList.remove('drag-over'));
+	});
+
+	node.addEventListener('dragover', (e) => {
+		e.preventDefault();
+		e.dataTransfer.dropEffect = 'move';
+		node.classList.add('drag-over');
+	});
+
+	node.addEventListener('dragleave', () => {
+		node.classList.remove('drag-over');
+	});
+
+	node.addEventListener('drop', async (e) => {
+		e.preventDefault();
+		node.classList.remove('drag-over');
+		
+		const draggedId = e.dataTransfer.getData('text/plain');
+		const targetId = task.id;
+		
+		if (draggedId !== targetId) {
+			await reorderTasks(draggedId, targetId);
+		}
+	});
+
 	return node;
+}
+
+async function reorderTasks(draggedId, targetId) {
+	const draggedIndex = tasks.findIndex(t => t.id === draggedId);
+	const targetIndex = tasks.findIndex(t => t.id === targetId);
+	
+	if (draggedIndex === -1 || targetIndex === -1) return;
+	
+	// Remove dragged task and insert at target position
+	const [draggedTask] = tasks.splice(draggedIndex, 1);
+	tasks.splice(targetIndex, 0, draggedTask);
+	
+	// Update order field for all tasks
+	for (let i = 0; i < tasks.length; i++) {
+		tasks[i].order = i;
+		await window.api.updateTask(tasks[i].id, { order: i });
+	}
+	
+	render();
 }
 
 function render() {
@@ -94,6 +198,7 @@ formEl.addEventListener('submit', async (e) => {
 	if (res.ok) {
 		tasks.unshift(res.task);
 		inputEl.value = '';
+		sortInPlace(tasks);
 		render();
 	}
 });
@@ -132,6 +237,7 @@ themeBtn.addEventListener('click', () => {
 // Init
 (async function init() {
 	tasks = await window.api.loadTasks();
+	sortInPlace(tasks);
 	render();
 	// Reflect current pin state
 	try {
@@ -139,3 +245,28 @@ themeBtn.addEventListener('click', () => {
 		pinBtn.style.opacity = pinned ? 1 : 0.6;
 	} catch {}
 })();
+
+// Local sort helper - respect manual order, then completion status
+function sortInPlace(arr) {
+	arr.sort((a, b) => {
+		// Completed tasks go to bottom
+		const byCompleted = Number(a.completed) - Number(b.completed);
+		if (byCompleted) return byCompleted;
+		
+		// For incomplete tasks, use manual order (lower order = higher priority)
+		const aOrder = Number(a.order ?? 999999);
+		const bOrder = Number(b.order ?? 999999);
+		if (aOrder !== bOrder) return aOrder - bOrder;
+		
+		// Fallback to creation time for tasks without order
+		return (a.createdAt || 0) - (b.createdAt || 0);
+	});
+}
+
+// Auto-refresh ordering as time passes (e.g., a task becomes overdue)
+setInterval(() => {
+	const before = JSON.stringify(tasks.map(t => t.id));
+	sortInPlace(tasks);
+	const after = JSON.stringify(tasks.map(t => t.id));
+	if (before !== after) render();
+}, 60 * 1000);
