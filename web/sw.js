@@ -1,4 +1,4 @@
-const CACHE_NAME = 'upnext-v1.0.1';
+const CACHE_NAME = 'upnext-v1.0.2';
 const STATIC_CACHE_URLS = [
   '/',
   '/index.html',
@@ -6,7 +6,15 @@ const STATIC_CACHE_URLS = [
   '/web-app.js',
   '/firebase-config.js',
   '/manifest.json',
+  '/favicon.ico',
+  '/favicon.png',
+  '/icon-72.png',
+  '/icon-96.png',
+  '/icon-128.png',
+  '/icon-144.png',
+  '/icon-152.png',
   '/icon-192.png',
+  '/icon-384.png',
   '/icon-512.png'
 ];
 

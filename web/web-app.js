@@ -36,6 +36,10 @@ class WebTaskApp {
         this.auth = null;
         this.user = null;
         
+        // PWA install prompt
+        this.deferredPrompt = null;
+        this.installButton = null;
+        
         // DOM elements
         this.elements = {
             form: document.getElementById('newTaskForm'),
@@ -105,6 +109,7 @@ class WebTaskApp {
         
         this.setupEventListeners();
         this.setupNetworkListeners();
+        this.setupPWAInstall();
         this.loadTheme();
         this.hideLoadingIndicator();
         this.registerServiceWorker();
@@ -1002,6 +1007,155 @@ class WebTaskApp {
         }
         
         return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + time;
+    }
+    
+    setupPWAInstall() {
+        // Create install button
+        this.createInstallButton();
+        
+        // Listen for beforeinstallprompt event
+        window.addEventListener('beforeinstallprompt', (e) => {
+            console.log('PWA install prompt available');
+            // Prevent the mini-infobar from appearing on mobile
+            e.preventDefault();
+            // Store the event so it can be triggered later
+            this.deferredPrompt = e;
+            // Show the install button
+            this.showInstallButton();
+        });
+        
+        // Listen for app installed event
+        window.addEventListener('appinstalled', () => {
+            console.log('PWA was installed');
+            this.hideInstallButton();
+            this.deferredPrompt = null;
+            // Show a confirmation message
+            this.showInstallConfirmation();
+        });
+        
+        // Check if app is already installed
+        if (window.matchMedia('(display-mode: standalone)').matches || 
+            window.navigator.standalone === true) {
+            console.log('PWA is running in standalone mode');
+            this.hideInstallButton();
+        }
+    }
+    
+    createInstallButton() {
+        // Create install button and add it to the header
+        this.installButton = document.createElement('button');
+        this.installButton.innerHTML = '📱 Install App';
+        this.installButton.className = 'install-btn';
+        this.installButton.title = 'Install UpNext as an app';
+        this.installButton.style.cssText = `
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            margin-left: 8px;
+            display: none;
+            transition: background-color 0.2s;
+        `;
+        
+        this.installButton.addEventListener('mouseover', () => {
+            this.installButton.style.backgroundColor = '#005a9e';
+        });
+        
+        this.installButton.addEventListener('mouseout', () => {
+            this.installButton.style.backgroundColor = '#007acc';
+        });
+        
+        this.installButton.addEventListener('click', () => {
+            this.handleInstallClick();
+        });
+        
+        // Add to header actions
+        const headerActions = document.querySelector('.header-actions');
+        if (headerActions) {
+            headerActions.insertBefore(this.installButton, headerActions.firstChild);
+        }
+    }
+    
+    showInstallButton() {
+        if (this.installButton) {
+            this.installButton.style.display = 'inline-block';
+        }
+    }
+    
+    hideInstallButton() {
+        if (this.installButton) {
+            this.installButton.style.display = 'none';
+        }
+    }
+    
+    async handleInstallClick() {
+        if (!this.deferredPrompt) {
+            console.log('No deferred prompt available');
+            return;
+        }
+        
+        // Hide the install button
+        this.hideInstallButton();
+        
+        // Show the install prompt
+        this.deferredPrompt.prompt();
+        
+        // Wait for the user to respond to the prompt
+        const { outcome } = await this.deferredPrompt.userChoice;
+        console.log(`User response to the install prompt: ${outcome}`);
+        
+        if (outcome === 'accepted') {
+            console.log('User accepted the install prompt');
+        } else {
+            console.log('User dismissed the install prompt');
+            // Show the button again if user dismissed
+            setTimeout(() => {
+                this.showInstallButton();
+            }, 30000); // Show again after 30 seconds
+        }
+        
+        // Clear the deferred prompt
+        this.deferredPrompt = null;
+    }
+    
+    showInstallConfirmation() {
+        // Create a temporary notification
+        const notification = document.createElement('div');
+        notification.innerHTML = '✅ UpNext installed successfully!';
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4caf50;
+            color: white;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            font-weight: 500;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Animate in
+        setTimeout(() => {
+            notification.style.transform = 'translateX(0)';
+        }, 100);
+        
+        // Remove after 4 seconds
+        setTimeout(() => {
+            notification.style.transform = 'translateX(100%)';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }, 4000);
     }
     
     async registerServiceWorker() {
