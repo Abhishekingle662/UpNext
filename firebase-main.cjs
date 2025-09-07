@@ -400,18 +400,30 @@ class FirebaseMainService {
   }
 
   // Create a new task
-  async createTask(title) {
+  async createTask(taskData) {
     try {
       if (!this.isInitialized) throw new Error('Firebase not initialized');
       
       const tasksCollection = this.getTasksCollection();
-      const newTask = {
-        title: title.trim(),
-        completed: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        order: 0
-      };
+      
+      // Handle both string title and task object for backward compatibility
+      let newTask;
+      if (typeof taskData === 'string') {
+        newTask = {
+          title: taskData.trim(),
+          completed: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          order: 0
+        };
+      } else {
+        // taskData is already a complete task object
+        newTask = {
+          ...taskData,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+      }
       
       const docRef = await addDoc(tasksCollection, newTask);
       return { id: docRef.id, ...newTask };
