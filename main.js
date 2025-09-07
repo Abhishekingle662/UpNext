@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain, nativeTheme, dialog } from 'electron';
-import path from 'node:path';
-import { promises as fs } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import crypto from 'node:crypto';
+const { app, BrowserWindow, ipcMain, nativeTheme, dialog } = require('electron');
+const path = require('node:path');
+const fs = require('node:fs').promises;
+const crypto = require('node:crypto');
+const { firebaseMainService } = require('./firebase-main.cjs');
 
 
 let win;
@@ -201,8 +201,8 @@ await fs.writeFile(tasksFile(), JSON.stringify(tasks, null, 2), 'utf-8');
 
 
 // Resolve __dirname in ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// __dirname is available in CommonJS
+// const __dirname = path.dirname(__filename); // Not needed in CommonJS
 
 async function readBounds() {
 	try {
@@ -271,6 +271,16 @@ async function createWindow() {
 
 // App lifecycle
 app.whenReady().then(async () => {
+	// Initialize Firebase
+	try {
+		const firebaseInitialized = await firebaseMainService.initialize();
+		if (!firebaseInitialized) {
+			console.warn('Firebase initialization failed, falling back to local storage');
+		}
+	} catch (error) {
+		console.error('Firebase initialization error:', error);
+	}
+
 	// Prefer system theme on first run
 	try {
 		const prefs = await readUIPrefs();
@@ -319,62 +329,123 @@ app.on('window-all-closed', () => {
 
 // IPC — tasks CRUD
 ipcMain.handle('tasks:load', async () => {
-const raw = await readTasks();
-// Enrich with derived meta for UI and sort with due/priority
-const enriched = raw.map(enrichTaskMeta);
-sortTasksForDisplay(enriched);
-return enriched;
+	try {
+		// Try Firebase first
+		const tasks = await firebaseMainService.loadTasks();
+		// Enrich with derived meta for UI and sort with due/priority
+		const enriched = tasks.map(enrichTaskMeta);
+		sortTasksForDisplay(enriched);
+		return enriched;
+	} catch (error) {
+		console.error('Firebase load failed, falling back to local storage:', error);
+		// Fallback to local storage
+		const raw = await readTasks();
+		const enriched = raw.map(enrichTaskMeta);
+		sortTasksForDisplay(enriched);
+		return enriched;
+	}
 });
 
 
 ipcMain.handle('tasks:create', async (_evt, title) => {
-const t = title?.trim();
-if (!t) return { ok: false, error: 'empty' };
-const tasks = await readTasks();
-const meta = { dueAt: parseDueFromTitle(t), priority: parsePriorityFromTitle(t) };
-// New tasks get order 0 (highest priority), shift others down
-const task = { id: crypto.randomUUID(), title: t, completed: false, createdAt: Date.now(), order: 0, ...meta };
-// Increment order of existing incomplete tasks
-tasks.forEach(t => { if (!t.completed) t.order = (t.order || 0) + 1; });
-tasks.unshift(task);
-await writeTasks(tasks);
-return { ok: true, task };
+	const t = title?.trim();
+	if (!t) return { ok: false, error: 'empty' };
+	
+	try {
+		const meta = { dueAt: parseDueFromTitle(t), priority: parsePriorityFromTitle(t) };
+		const taskData = { 
+			title: t, 
+			completed: false, 
+			createdAt: Date.now(), 
+			order: 0, 
+			...meta 
+		};
+		
+		// Try Firebase first
+		const task = await firebaseMainService.createTask(taskData);
+		return { ok: true, task };
+	} catch (error) {
+		console.error('Firebase create failed, falling back to local storage:', error);
+		// Fallback to local storage
+		const tasks = await readTasks();
+		const meta = { dueAt: parseDueFromTitle(t), priority: parsePriorityFromTitle(t) };
+		const task = { id: crypto.randomUUID(), title: t, completed: false, createdAt: Date.now(), order: 0, ...meta };
+		tasks.forEach(t => { if (!t.completed) t.order = (t.order || 0) + 1; });
+		tasks.unshift(task);
+		await writeTasks(tasks);
+		return { ok: true, task };
+	}
 });
 
 
 ipcMain.handle('tasks:update', async (_evt, { id, patch }) => {
-const tasks = await readTasks();
-const i = tasks.findIndex(t => t.id === id);
-if (i === -1) return { ok: false, error: 'not_found' };
-const prev = tasks[i];
-let next = { ...prev, ...patch, updatedAt: Date.now() };
-// If title changed, recompute meta; allow explicit meta override via patch
-if (Object.prototype.hasOwnProperty.call(patch || {}, 'title')) {
-	const meta = { dueAt: parseDueFromTitle(next.title), priority: parsePriorityFromTitle(next.title) };
-	next = { ...next, ...meta };
-}
-if (patch?.completed === true && !prev.completed) next.completedAt = Date.now();
-if (patch?.completed === false) delete next.completedAt;
-tasks[i] = next;
-await writeTasks(tasks);
-return { ok: true, task: next };
+	try {
+		// Try Firebase first
+		let updateData = { ...patch };
+		
+		// If title changed, recompute meta
+		if (Object.prototype.hasOwnProperty.call(patch || {}, 'title')) {
+			const meta = { dueAt: parseDueFromTitle(patch.title), priority: parsePriorityFromTitle(patch.title) };
+			updateData = { ...updateData, ...meta };
+		}
+		
+		// Handle completion timestamps
+		if (patch?.completed === true) updateData.completedAt = Date.now();
+		if (patch?.completed === false) delete updateData.completedAt;
+		
+		const task = await firebaseMainService.updateTask(id, updateData);
+		return { ok: true, task };
+	} catch (error) {
+		console.error('Firebase update failed, falling back to local storage:', error);
+		// Fallback to local storage
+		const tasks = await readTasks();
+		const i = tasks.findIndex(t => t.id === id);
+		if (i === -1) return { ok: false, error: 'not_found' };
+		const prev = tasks[i];
+		let next = { ...prev, ...patch, updatedAt: Date.now() };
+		if (Object.prototype.hasOwnProperty.call(patch || {}, 'title')) {
+			const meta = { dueAt: parseDueFromTitle(next.title), priority: parsePriorityFromTitle(next.title) };
+			next = { ...next, ...meta };
+		}
+		if (patch?.completed === true && !prev.completed) next.completedAt = Date.now();
+		if (patch?.completed === false) delete next.completedAt;
+		tasks[i] = next;
+		await writeTasks(tasks);
+		return { ok: true, task: next };
+	}
 });
 
 
 ipcMain.handle('tasks:delete', async (_evt, id) => {
-	const tasks = await readTasks();
-	const next = tasks.filter(t => t.id !== id);
-	await writeTasks(next);
-	return { ok: true };
+	try {
+		// Try Firebase first
+		await firebaseMainService.deleteTask(id);
+		return { ok: true };
+	} catch (error) {
+		console.error('Firebase delete failed, falling back to local storage:', error);
+		// Fallback to local storage
+		const tasks = await readTasks();
+		const next = tasks.filter(t => t.id !== id);
+		await writeTasks(next);
+		return { ok: true };
+	}
 });
 
 // Clear completed tasks
 ipcMain.handle('tasks:clearCompleted', async () => {
-	const tasks = await readTasks();
-	const next = tasks.filter(t => !t.completed);
-	const removed = tasks.length - next.length;
-	await writeTasks(next);
-	return { ok: true, removed };
+	try {
+		// Try Firebase first
+		const removed = await firebaseMainService.clearCompleted();
+		return { ok: true, removed };
+	} catch (error) {
+		console.error('Firebase clear completed failed, falling back to local storage:', error);
+		// Fallback to local storage
+		const tasks = await readTasks();
+		const next = tasks.filter(t => !t.completed);
+		const removed = tasks.length - next.length;
+		await writeTasks(next);
+		return { ok: true, removed };
+	}
 });
 
 // Window controls
@@ -391,3 +462,79 @@ ipcMain.handle('window:minimize', () => { win?.minimize(); });
 
 // Query current pin state
 ipcMain.handle('window:getPin', () => ({ pinned: !!win?.isAlwaysOnTop() }));
+
+// Authentication handlers
+ipcMain.handle('auth:signInWithGoogle', async () => {
+	try {
+		const user = await firebaseMainService.signInWithGoogle();
+		return { 
+			success: true, 
+			user: {
+				uid: user.uid,
+				email: user.email,
+				displayName: user.displayName,
+				photoURL: user.photoURL,
+				isAnonymous: user.isAnonymous
+			}
+		};
+	} catch (error) {
+		console.error('Google sign-in failed in main process:', error);
+		return { success: false, error: error.message };
+	}
+});
+
+ipcMain.handle('auth:signOut', async () => {
+	try {
+		await firebaseMainService.signOut();
+		return { success: true };
+	} catch (error) {
+		console.error('Sign out failed in main process:', error);
+		return { success: false, error: error.message };
+	}
+});
+
+ipcMain.handle('auth:getCurrentUser', async () => {
+	try {
+		const user = firebaseMainService.user;
+		const isProduction = process.env.NODE_ENV === 'production' || process.env.FORCE_GOOGLE_AUTH === 'true';
+		
+		if (user) {
+			return { 
+				user: {
+					uid: user.uid,
+					email: user.email,
+					displayName: user.displayName,
+					photoURL: user.photoURL,
+					isAnonymous: user.isAnonymous
+				},
+				showSignInButton: isProduction && user.isAnonymous
+			};
+		}
+		return { 
+			user: null, 
+			showSignInButton: isProduction 
+		};
+	} catch (error) {
+		console.error('Get current user failed:', error);
+		return { 
+			user: null, 
+			showSignInButton: false // Default to development mode behavior
+		};
+	}
+});
+
+// Force check stored auth and notify renderer
+ipcMain.handle('auth:checkStoredAuth', async () => {
+	try {
+		console.log('Renderer requested stored auth check...');
+		const hasStoredAuth = await firebaseMainService.checkStoredAuth();
+		if (hasStoredAuth) {
+			// Immediately notify renderer of the current user
+			firebaseMainService.notifyAuthChange(firebaseMainService.user);
+		}
+		return { hasStoredAuth };
+	} catch (error) {
+		console.error('Failed to check stored auth:', error);
+		return { hasStoredAuth: false };
+	}
+});

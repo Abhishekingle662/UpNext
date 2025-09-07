@@ -1,0 +1,59 @@
+#!/usr/bin/env node
+
+import { promises as fs } from 'fs';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+async function setup() {
+    console.log('🚀 Setting up UpNext...\n');
+
+    try {
+        // Check if config files exist
+        const configExists = await fs.access(path.join(__dirname, 'firebase-config.js')).then(() => true).catch(() => false);
+        const webConfigExists = await fs.access(path.join(__dirname, 'web', 'firebase-config.js')).then(() => true).catch(() => false);
+
+        if (!configExists) {
+            console.log('📝 Copying firebase-config.template.js to firebase-config.js...');
+            await fs.copyFile(
+                path.join(__dirname, 'firebase-config.template.js'),
+                path.join(__dirname, 'firebase-config.js')
+            );
+            console.log('✅ Created firebase-config.js');
+        } else {
+            console.log('✅ firebase-config.js already exists');
+        }
+
+        if (!webConfigExists) {
+            console.log('📝 Copying web/firebase-config.template.js to web/firebase-config.js...');
+            await fs.copyFile(
+                path.join(__dirname, 'web', 'firebase-config.template.js'),
+                path.join(__dirname, 'web', 'firebase-config.js')
+            );
+            console.log('✅ Created web/firebase-config.js');
+        } else {
+            console.log('✅ web/firebase-config.js already exists');
+        }
+
+        console.log('\n🔧 Next steps:');
+        console.log('1. 🔥 Set up Firebase project (see SETUP_INSTRUCTIONS.md)');
+        console.log('2. 📝 Update firebase-config.js with your Firebase credentials');
+        console.log('3. 📝 Update web/firebase-config.js with the same credentials');
+        console.log('4. 🏃‍♂️ Run "npm run dev" for desktop app');
+        console.log('5. 🌐 Run "npm run serve-web" for web app');
+        
+        console.log('\n📚 Documentation:');
+        console.log('- SETUP_INSTRUCTIONS.md - Complete setup guide');
+        console.log('- FIREBASE_SETUP.md - Firebase configuration');
+        console.log('- PRODUCTION_DEPLOYMENT.md - Deploy to production');
+
+        console.log('\n🎉 Setup complete! Happy task managing with UpNext!');
+
+    } catch (error) {
+        console.error('❌ Setup failed:', error.message);
+        process.exit(1);
+    }
+}
+
+setup();

@@ -1,8 +1,7 @@
 {
 "name": "upnext",
-"version": "0.1.0",
+"version": "0.1.1",
 "private": true,
-"type": "module",
 "main": "main.js",
 "description": "An always-on-top, minimalist to-do app that keeps tasks visible so you capture and finish work faster.",
 "author": "Abhishek Ingle (Abhishekingle662)",
@@ -11,24 +10,37 @@
 	"type": "git",
 	"url": "https://github.com/Abhishekingle662/UpNext.git"
 },
+
 "homepage": "https://github.com/Abhishekingle662/UpNext",
 "scripts": {
 "start": "electron .",
 "dev": "electronmon .",
 "pack": "electron-builder --dir",
-"dist": "electron-builder"
+"dist": "electron-builder",
+"zip-dist": "npm run pack && node create-zip-dist.js",
+"version:patch": "node increment-version.js patch",
+"version:minor": "node increment-version.js minor",
+"version:major": "node increment-version.js major",
+"release": "npm run version:patch && npm run zip-dist",
+"serve-web": "node serve-web.js",
+"setup": "node setup.js"
 },
-"devDependencies": {
-"electron": "^31.3.0",
-"electronmon": "^2.0.2",
-"electron-builder": "^24.13.3"
-},
+	"dependencies": {
+		"firebase": "^10.7.1"
+	},
+	"devDependencies": {
+		"electron": "^31.3.0",
+		"electronmon": "^2.0.2",
+		"electron-builder": "^24.13.3"
+	},
+
 "build": {
 	"appId": "com.abhi.upnext",
 	"productName": "UpNext",
 	"asar": true,
 	"files": [
 		"main.js",
+		"firebase-main.cjs",
 		"preload.cjs",
 		"renderer/**/*",
 		"package.json",

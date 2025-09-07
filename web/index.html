@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <title>UpNext - Cross Platform Todo</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="An always-accessible, minimalist to-do app that syncs across all your devices." />
+    <meta name="theme-color" content="#1a1a1a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="UpNext" />
+    
+    <!-- Icons -->
+    <link rel="icon" type="image/x-icon" href="./favicon.ico" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <link rel="manifest" href="./manifest.json" />
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="./web-styles.css" />
+</head>
+<body>
+    <div id="app">
+        <header class="header">
+            <div class="header-content">
+                <h1 class="app-title">UpNext</h1>
+                <div class="header-actions">
+                    <div id="userInfo" class="user-info" hidden>
+                        <img id="userPhoto" class="user-photo" src="" alt="User" />
+                        <span id="userName" class="user-name"></span>
+                        <button id="signOutBtn" class="sign-out-btn" title="Sign out">↗</button>
+                    </div>
+                    <button id="signInBtn" class="sign-in-btn" hidden>Sign In with Google</button>
+                    <button id="syncStatus" class="status-btn" title="Sync status">
+                        <span class="sync-icon">🔄</span>
+                        <span class="sync-text">Syncing...</span>
+                    </button>
+                    <button id="themeBtn" class="icon-btn" title="Toggle theme">🌗</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <form id="newTaskForm" class="task-form" autocomplete="off">
+                <div class="input-container">
+                    <input 
+                        id="taskInput" 
+                        type="text" 
+                        placeholder="Add a task and press Enter…"
+                        class="task-input"
+                    />
+                    <button type="submit" class="add-btn" aria-label="Add task">+</button>
+                </div>
+            </form>
+
+            <section class="toolbar">
+                <span id="count" class="task-count"></span>
+                <div class="spacer"></div>
+                <button id="clearCompleted" class="clear-btn">Clear completed</button>
+            </section>
+
+            <div id="empty" class="empty-state" hidden>
+                <div class="empty-icon">📝</div>
+                <div class="empty-title">No tasks yet</div>
+                <div class="empty-subtitle">Add your first task above and press Enter</div>
+                <div class="empty-hint">
+                    💡 Tip: Add times like "3pm", "tomorrow 9am", or priority with "!" marks
+                </div>
+            </div>
+
+            <ul id="list" class="task-list"></ul>
+        </main>
+
+        <!-- Offline indicator -->
+        <div id="offlineIndicator" class="offline-indicator" hidden>
+            <span class="offline-icon">📱</span>
+            <span class="offline-text">You're offline. Changes will sync when reconnected.</span>
+        </div>
+
+        <!-- Loading indicator -->
+        <div id="loadingIndicator" class="loading-indicator">
+            <div class="loading-spinner"></div>
+            <span>Loading tasks...</span>
+        </div>
+    </div>
+
+    <!-- Task item template -->
+    <template id="taskTemplate">
+        <li class="task-item" draggable="true">
+            <div class="task-content">
+                <label class="task-checkbox">
+                    <input type="checkbox" />
+                    <span class="checkmark">✓</span>
+                </label>
+                
+                <div class="task-main">
+                    <div class="task-title" data-role="title"></div>
+                    <div class="task-meta">
+                        <span class="badge due-badge" data-role="due" hidden></span>
+                        <span class="badge priority-badge" data-role="priority" hidden></span>
+                    </div>
+                </div>
+                
+                <input class="task-edit" data-role="edit" />
+                
+                <div class="task-actions">
+                    <button class="action-btn drag-btn" data-role="drag" title="Drag to reorder">⋮⋮</button>
+                    <button class="action-btn delete-btn" data-role="delete" title="Delete">🗑️</button>
+                </div>
+            </div>
+        </li>
+    </template>
+
+    <!-- Import Maps for Firebase -->
+    <script type="importmap">
+    {
+        "imports": {
+            "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
+            "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js",
+            "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
+        }
+    }
+    </script>
+    
+    <!-- Scripts -->
+    <script type="module" src="./web-app.js"></script>
+</body>
+</html>

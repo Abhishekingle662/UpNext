@@ -234,11 +234,142 @@ themeBtn.addEventListener('click', () => {
 	localStorage.setItem('theme', next);
 });
 
+// Authentication elements
+const signInBtn = document.getElementById('signInBtn');
+const signOutBtn = document.getElementById('signOutBtn');
+const userInfo = document.getElementById('userInfo');
+const userPhoto = document.getElementById('userPhoto');
+const userName = document.getElementById('userName');
+
+// Authentication event handlers
+signInBtn?.addEventListener('click', async () => {
+	try {
+		const result = await window.api.signInWithGoogle();
+		if (result.success) {
+			updateUserUI(result.user, false); // Hide sign-in button after successful sign-in
+			// Reload tasks after sign-in
+			tasks = await window.api.loadTasks();
+			sortInPlace(tasks);
+			render();
+		}
+	} catch (error) {
+		console.error('Sign in failed:', error);
+		
+		// Show user-friendly message
+		if (error.message && error.message.includes('Google sign-in opened in your web browser')) {
+			alert('Google sign-in opened in your web browser!\n\n' +
+			      'Please sign in at the web app for your personal tasks.\n' +
+			      'The desktop app works great in development mode for quick task management.');
+		} else {
+			alert('Sign in failed. Please try again or use the web app at https://upnext-97a2a.web.app');
+		}
+	}
+});
+
+signOutBtn?.addEventListener('click', async () => {
+	try {
+		await window.api.signOut();
+		// Get updated UI state after sign-out
+		const userState = await window.api.getCurrentUser();
+		updateUserUI(null, userState.showSignInButton);
+		tasks = [];
+		render();
+	} catch (error) {
+		console.error('Sign out failed:', error);
+	}
+});
+
+// Update user interface based on authentication state
+function updateUserUI(user, showSignInButton = true) {
+	if (user && !user.isAnonymous) {
+		// Show user info
+		userInfo.hidden = false;
+		signInBtn.hidden = true;
+		
+		userName.textContent = user.displayName || user.email;
+		if (user.photoURL) {
+			userPhoto.src = user.photoURL;
+			userPhoto.hidden = false;
+		} else {
+			userPhoto.hidden = true;
+		}
+	} else {
+		// Show sign in button based on environment (production vs development)
+		userInfo.hidden = true;
+		signInBtn.hidden = !showSignInButton;
+	}
+}
+
+// Listen for authentication state changes from main process
+window.addEventListener('DOMContentLoaded', () => {
+	// Set up IPC listener for auth state changes
+	console.log('Setting up auth state change listener...');
+	console.log('electronAPI available:', !!window.electronAPI);
+	console.log('onAuthStateChanged available:', !!(window.electronAPI && window.electronAPI.onAuthStateChanged));
+	
+	if (window.electronAPI && window.electronAPI.onAuthStateChanged) {
+		console.log('Registering auth state change listener');
+		window.electronAPI.onAuthStateChanged((user) => {
+			console.log('🎉 Auth state changed in renderer:', user);
+			if (user) {
+				console.log('✅ User signed in, updating UI and loading tasks');
+				updateUserUI(user, false);
+				// Reload tasks when user signs in
+				loadAndRenderTasks();
+			} else {
+				console.log('❌ User signed out, clearing tasks');
+				updateUserUI(null, true);
+				tasks = [];
+				render();
+			}
+		});
+		console.log('Auth state change listener registered successfully');
+	} else {
+		console.error('❌ electronAPI or onAuthStateChanged not available');
+	}
+});
+
+async function loadAndRenderTasks() {
+	try {
+		console.log('🔄 Loading tasks from API...');
+		tasks = await window.api.loadTasks();
+		console.log('✅ Tasks loaded:', tasks.length, 'tasks');
+		sortInPlace(tasks);
+		render();
+		console.log('✅ Tasks rendered successfully');
+	} catch (error) {
+		console.error('❌ Failed to load tasks:', error);
+	}
+}
+
 // Init
 (async function init() {
-	tasks = await window.api.loadTasks();
-	sortInPlace(tasks);
-	render();
+	// Check current user state
+	try {
+		console.log('🚀 Initializing renderer...');
+		
+		const userState = await window.api.getCurrentUser();
+		console.log('📋 Current user state:', userState);
+		
+		updateUserUI(userState.user, userState.showSignInButton);
+		
+		if (!userState.user) {
+			// No user found, try to check for stored auth
+			console.log('❓ No user found, checking for stored authentication...');
+			try {
+				await window.api.checkStoredAuth();
+				console.log('✅ Stored auth check completed');
+			} catch (error) {
+				console.error('❌ Stored auth check failed:', error);
+			}
+		}
+	} catch (error) {
+		console.log('No user state available');
+		updateUserUI(null, true); // Default to showing sign-in button on error
+	}
+	
+	await loadAndRenderTasks();
+	
 	// Reflect current pin state
 	try {
 		const { pinned } = await window.api.getPin();

@@ -23,7 +23,22 @@ Thumbs.db
 *.swp
 *.swo
 
+# Firebase config files (contain sensitive API keys)
+firebase-config.js
+web/firebase-config.js
+firestore-rules-fix.txt
+
+# Temporary files and local development
+*.tmp
+.cache/
+.firebase/
+
 # OS junk
 *.orig
 *.tgz
-*.zip
+
+# Distribution files (keep scripts, ignore generated files)
+dist/*.zip
+dist/*.exe
+dist/*.blockmap
+dist/release-info.json
