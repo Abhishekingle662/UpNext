@@ -1,4 +1,4 @@
-const CACHE_NAME = 'upnext-v1.0.3';
+const CACHE_NAME = 'upnext-v1.0.5';
 const STATIC_CACHE_URLS = [
   '/',
   '/index.html',
@@ -72,6 +72,34 @@ self.addEventListener('fetch', (event) => {
   if (event.request.url.includes('firebaseapp.com') || 
       event.request.url.includes('googleapis.com') ||
       event.request.url.includes('firebase')) {
+    return;
+  }
+  
+  // Force fresh fetch for manifest and icons to ensure updates
+  if (event.request.url.includes('manifest.json') || 
+      event.request.url.includes('icon-') ||
+      event.request.url.includes('favicon')) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-cache' })
+        .then((response) => {
+          if (response && response.status === 200) {
+            // Add cache-busting headers
+            const modifiedResponse = new Response(response.body, {
+              status: response.status,
+              statusText: response.statusText,
+              headers: {
+                ...Object.fromEntries(response.headers.entries()),
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+              }
+            });
+            return modifiedResponse;
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
     return;
   }
   

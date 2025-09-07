@@ -42,3 +42,4 @@ dist/*.zip
 dist/*.exe
 dist/*.blockmap
 dist/release-info.json
+dist2/
