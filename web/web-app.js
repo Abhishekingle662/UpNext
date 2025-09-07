@@ -52,7 +52,6 @@ class WebTaskApp {
             syncStatus: document.getElementById('syncStatus'),
             syncIcon: document.querySelector('.sync-icon'),
             syncText: document.querySelector('.sync-text'),
-            offlineIndicator: document.getElementById('offlineIndicator'),
             loadingIndicator: document.getElementById('loadingIndicator'),
             template: document.getElementById('taskTemplate'),
             // Auth elements
@@ -550,7 +549,6 @@ class WebTaskApp {
     setupNetworkListeners() {
         window.addEventListener('online', () => {
             this.isOnline = true;
-            this.hideOfflineIndicator();
             if (this.syncStatus === 'offline') {
                 this.syncStatus = 'connecting';
                 this.updateSyncStatus();
@@ -562,7 +560,6 @@ class WebTaskApp {
             this.isOnline = false;
             this.syncStatus = 'offline';
             this.updateSyncStatus();
-            this.showOfflineIndicator();
         });
     }
     
@@ -896,13 +893,6 @@ class WebTaskApp {
         }
     }
     
-    showOfflineIndicator() {
-        this.elements.offlineIndicator.hidden = false;
-    }
-    
-    hideOfflineIndicator() {
-        this.elements.offlineIndicator.hidden = true;
-    }
     
     hideLoadingIndicator() {
         this.elements.loadingIndicator.style.display = 'none';

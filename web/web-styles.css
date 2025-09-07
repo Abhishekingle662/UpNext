@@ -552,36 +552,6 @@ body {
     cursor: grabbing;
 }
 
-/* Offline Indicator */
-.offline-indicator {
-    position: fixed;
-    bottom: 1rem;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--warning);
-    color: var(--text-primary);
-    padding: 0.75rem 1rem;
-    border-radius: 25px;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8rem;
-    font-weight: 500;
-    box-shadow: 0 4px 12px var(--shadow);
-    z-index: 1000;
-    animation: slideUp 0.3s ease;
-}
-
-@keyframes slideUp {
-    from {
-        transform: translateX(-50%) translateY(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(-50%) translateY(0);
-        opacity: 1;
-    }
-}
 
 /* Loading Indicator */
 .loading-indicator {
