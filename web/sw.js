@@ -155,7 +155,6 @@ self.addEventListener('sync', (event) => {
 async function syncTasks() {
   try {
     // This would sync any offline-created tasks
-    // Implementation depends on how you want to handle offline storage
     console.log('Service Worker: Syncing tasks...');
     
     // Notify all clients that sync is happening
@@ -165,16 +164,23 @@ async function syncTasks() {
         type: 'SYNC_STARTED'
       });
     });
-    
-    // Perform sync logic here
-    // ...
-    
-    // Notify completion
+
+    // Check if we have offline tasks or queue to sync
+    // The main app will handle the actual sync logic
     clients.forEach(client => {
       client.postMessage({
-        type: 'SYNC_COMPLETED'
+        type: 'PROCESS_OFFLINE_QUEUE'
       });
     });
+    
+    // Notify completion
+    setTimeout(() => {
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'SYNC_COMPLETED'
+        });
+      });
+    }, 1000);
     
   } catch (error) {
     console.error('Service Worker: Sync failed', error);

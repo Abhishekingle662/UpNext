@@ -44,6 +44,9 @@ const server = createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   
+  // Add Content Security Policy for Firebase and Google services
+  res.setHeader('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://identitytoolkit.googleapis.com; img-src 'self' data: https://*.googleusercontent.com https://*.googleapis.com; connect-src 'self' https://*.googleapis.com https://*.google.com wss://*.firebaseio.com https://*.firebaseio.com;");
+  
   if (req.method === 'OPTIONS') {
     res.writeHead(200);
     res.end();

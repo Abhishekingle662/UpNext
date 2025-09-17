@@ -11,7 +11,8 @@ import {
   orderBy, 
   onSnapshot,
   enableNetwork,
-  disableNetwork
+  disableNetwork,
+  enableIndexedDbPersistence
 } from 'firebase/firestore';
 import { 
   getAuth, 
@@ -29,6 +30,7 @@ class WebTaskApp {
         this.isOnline = navigator.onLine;
         this.syncStatus = 'connecting';
         this.unsubscribe = null;
+        this.offlineQueue = [];
         
         // Firebase instances
         this.app = null;
@@ -236,10 +238,21 @@ class WebTaskApp {
             this.db = getFirestore(this.app);
             this.auth = getAuth(this.app);
 
-            console.log('🔥 Firebase initialized, setting up auth persistence...');
+            console.log('🔥 Firebase initialized, enabling offline persistence...');
             
-            // Firebase Auth automatically handles persistence in web browsers
-            console.log('✅ Firebase Auth persistence is automatic in browsers');
+            // Enable offline persistence for Firestore
+            try {
+                await enableIndexedDbPersistence(this.db);
+                console.log('✅ Firebase offline persistence enabled');
+            } catch (err) {
+                if (err.code === 'failed-precondition') {
+                    console.warn('⚠️ Multiple tabs open, persistence can only be enabled in one tab');
+                } else if (err.code === 'unimplemented') {
+                    console.warn('⚠️ Browser doesn\'t support offline persistence');
+                } else {
+                    console.error('❌ Failed to enable persistence:', err);
+                }
+            }
 
             console.log('🔥 Waiting for auth state...');
             // Wait for authentication state to be restored
@@ -519,18 +532,28 @@ class WebTaskApp {
                 this.tasks = this.enrichTasks(tasks);
                 this.sortTasks();
                 this.render();
+                
+                // Save to local storage for offline access
+                this.saveTasksToLocal();
             }, (error) => {
                 console.error('Task subscription error:', error);
                 console.error('Error details:', error.code, error.message);
+                
+                // On subscription error, try to load from local storage
+                this.loadOfflineTasks();
             });
         } catch (error) {
             console.error('Failed to subscribe to tasks:', error);
+            this.loadOfflineTasks();
         }
     }
     
     setupEventListeners() {
         // Form submission
         this.elements.form.addEventListener('submit', (e) => this.handleSubmit(e));
+        
+        // Enhanced textarea input handling
+        this.setupTaskInputHandlers();
         
         // Clear completed
         this.elements.clearBtn.addEventListener('click', () => this.clearCompleted());
@@ -539,34 +562,242 @@ class WebTaskApp {
         this.elements.themeBtn.addEventListener('click', () => this.toggleTheme());
         
         // Sync status click (manual refresh)
-        this.elements.syncStatus.addEventListener('click', () => this.manualSync());
+        this.elements.syncStatus.addEventListener('click', () => {
+            console.log('🔄 Manual sync triggered by user click');
+            if (this.isOnline) {
+                this.manualSync();
+            } else {
+                console.log('⚠️ Cannot sync while offline');
+            }
+        });
         
         // Auth buttons
         this.elements.signInBtn.addEventListener('click', () => this.handleSignIn());
         this.elements.signOutBtn.addEventListener('click', () => this.signOutUser());
     }
     
+    setupTaskInputHandlers() {
+        const input = this.elements.input;
+        
+        // Handle Enter vs Shift+Enter
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                if (e.shiftKey) {
+                    // Shift+Enter: Submit the form
+                    e.preventDefault();
+                    this.elements.form.dispatchEvent(new Event('submit'));
+                } else {
+                    // Just Enter: Allow new line (default behavior)
+                    // Auto-resize will be handled by the input event
+                }
+            }
+        });
+        
+        // Auto-resize textarea
+        input.addEventListener('input', () => {
+            this.autoResizeTextarea(input);
+        });
+        
+        // Initial resize
+        this.autoResizeTextarea(input);
+    }
+    
+    autoResizeTextarea(textarea) {
+        // Reset height to measure content
+        textarea.style.height = 'auto';
+        
+        // Calculate the needed height
+        const scrollHeight = textarea.scrollHeight;
+        const minHeight = 24; // 1 line height
+        const maxHeight = 120; // ~5 lines
+        
+        // Set the new height within bounds
+        const newHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight);
+        textarea.style.height = newHeight + 'px';
+        
+        // Show scrollbar if content exceeds max height
+        textarea.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden';
+    }
+    
+    clearTaskInput() {
+        this.elements.input.value = '';
+        this.autoResizeTextarea(this.elements.input);
+    }
+    
     setupNetworkListeners() {
         window.addEventListener('online', () => {
+            console.log('🌐 Back online!');
             this.isOnline = true;
             if (this.syncStatus === 'offline') {
                 this.syncStatus = 'connecting';
                 this.updateSyncStatus();
-                this.manualSync();
+                
+                // Process offline queue first, then sync
+                setTimeout(async () => {
+                    try {
+                        await this.processOfflineQueue();
+                        await this.manualSync(true); // Skip queue processing since we just did it
+                        this.syncStatus = 'synced';
+                        
+                        // Final status update with delay to ensure queue is clear
+                        setTimeout(() => {
+                            this.updateSyncStatus();
+                            console.log('🌐 Back online sync completed');
+                        }, 300);
+                    } catch (error) {
+                        console.error('Failed to sync when back online:', error);
+                        this.syncStatus = 'error';
+                        this.updateSyncStatus();
+                    }
+                }, 1000); // Give network a moment to stabilize
             }
         });
         
         window.addEventListener('offline', () => {
+            console.log('📴 Gone offline!');
             this.isOnline = false;
             this.syncStatus = 'offline';
             this.updateSyncStatus();
+            // Load tasks from local storage when offline
+            this.loadOfflineTasks();
         });
+    }
+
+    // Local storage methods for offline support
+    getOfflineTasksKey() {
+        return `upnext_tasks_${this.user?.uid || 'anonymous'}`;
+    }
+
+    getOfflineQueueKey() {
+        return `upnext_queue_${this.user?.uid || 'anonymous'}`;
+    }
+
+    saveTasksToLocal() {
+        try {
+            const key = this.getOfflineTasksKey();
+            localStorage.setItem(key, JSON.stringify(this.tasks));
+            console.log('💾 Tasks saved to local storage');
+        } catch (error) {
+            console.error('Failed to save tasks locally:', error);
+        }
+    }
+
+    loadOfflineTasks() {
+        try {
+            const key = this.getOfflineTasksKey();
+            const stored = localStorage.getItem(key);
+            if (stored) {
+                this.tasks = JSON.parse(stored);
+                this.render();
+                console.log('📱 Loaded tasks from local storage');
+            }
+        } catch (error) {
+            console.error('Failed to load offline tasks:', error);
+        }
+    }
+
+    addToOfflineQueue(operation) {
+        try {
+            const key = this.getOfflineQueueKey();
+            const stored = localStorage.getItem(key);
+            const queue = stored ? JSON.parse(stored) : [];
+            
+            queue.push({
+                ...operation,
+                timestamp: Date.now(),
+                id: crypto.randomUUID()
+            });
+            
+            localStorage.setItem(key, JSON.stringify(queue));
+            console.log('📦 Added operation to offline queue:', operation.type);
+        } catch (error) {
+            console.error('Failed to add to offline queue:', error);
+        }
+    }
+
+    async processOfflineQueue() {
+        try {
+            if (!this.user) {
+                console.log('⚠️ No user authenticated, cannot process offline queue');
+                return;
+            }
+
+            const key = this.getOfflineQueueKey();
+            const stored = localStorage.getItem(key);
+            if (!stored) {
+                console.log('📦 No offline queue to process');
+                return;
+            }
+
+            const queue = JSON.parse(stored);
+            console.log('🔄 Processing offline queue:', queue.length, 'operations');
+
+            let successCount = 0;
+            let failureCount = 0;
+
+            for (const operation of queue) {
+                try {
+                    await this.executeQueuedOperation(operation);
+                    console.log('✅ Processed queued operation:', operation.type, operation.id);
+                    successCount++;
+                } catch (error) {
+                    console.error('❌ Failed to process queued operation:', operation, error);
+                    failureCount++;
+                }
+            }
+
+            // Clear the queue after processing (even if some failed)
+            localStorage.removeItem(key);
+            console.log(`🗑️ Offline queue processed: ${successCount} success, ${failureCount} failed`);
+            
+            // Force a sync status update after queue is cleared
+            setTimeout(() => {
+                this.updateSyncStatus();
+            }, 100);
+        } catch (error) {
+            console.error('Failed to process offline queue:', error);
+        }
+    }
+
+    async executeQueuedOperation(operation) {
+        if (!this.user) {
+            throw new Error('User not authenticated');
+        }
+
+        console.log('🔧 Executing queued operation:', operation.type, operation.id);
+        const tasksRef = this.getTasksCollection();
+        
+        switch (operation.type) {
+            case 'create':
+                console.log('📝 Creating task from queue:', operation.data.title);
+                await addDoc(tasksRef, operation.data);
+                break;
+            case 'update':
+                console.log('✏️ Updating task from queue:', operation.taskId);
+                const updateRef = doc(tasksRef, operation.taskId);
+                await updateDoc(updateRef, operation.data);
+                break;
+            case 'delete':
+                console.log('🗑️ Deleting task from queue:', operation.taskId);
+                const deleteRef = doc(tasksRef, operation.taskId);
+                await deleteDoc(deleteRef);
+                break;
+            default:
+                console.warn('Unknown operation type:', operation.type);
+                throw new Error(`Unknown operation type: ${operation.type}`);
+        }
     }
     
     async loadTasks() {
         try {
             if (!this.user) {
                 console.log('No user available for loading tasks');
+                return;
+            }
+
+            // If offline, load from local storage
+            if (!this.isOnline) {
+                this.loadOfflineTasks();
                 return;
             }
             
@@ -595,11 +826,17 @@ class WebTaskApp {
             this.tasks = this.enrichTasks(tasks);
             this.sortTasks();
             this.render();
+            
+            // Save to local storage for offline access
+            this.saveTasksToLocal();
         } catch (error) {
             console.error('Failed to load tasks:', error);
             console.error('Error details:', error.code, error.message);
             this.syncStatus = 'error';
             this.updateSyncStatus();
+            
+            // Fallback to offline tasks if available
+            this.loadOfflineTasks();
         }
     }
     
@@ -616,12 +853,40 @@ class WebTaskApp {
                 updatedAt: new Date(),
                 order: 0
             };
-            
-            const tasksRef = this.getTasksCollection();
-            await addDoc(tasksRef, taskData);
-            this.elements.input.value = '';
-            
-            // Tasks will be updated via real-time subscription
+
+            if (this.isOnline && this.user) {
+                // Online: save to Firebase
+                const tasksRef = this.getTasksCollection();
+                await addDoc(tasksRef, taskData);
+                this.clearTaskInput();
+                // Tasks will be updated via real-time subscription
+            } else {
+                // Offline: create local task and queue for sync
+                const localTask = {
+                    id: `offline_${crypto.randomUUID()}`,
+                    ...taskData,
+                    createdAt: taskData.createdAt.getTime(),
+                    updatedAt: taskData.updatedAt.getTime(),
+                    _offline: true
+                };
+                
+                this.tasks.unshift(localTask);
+                this.sortTasks();
+                this.render();
+                this.saveTasksToLocal();
+                
+                // Queue for sync when back online
+                if (this.user) {
+                    this.addToOfflineQueue({
+                        type: 'create',
+                        data: taskData,
+                        localId: localTask.id // Track the local ID for cleanup
+                    });
+                }
+                
+                this.clearTaskInput();
+                console.log('📱 Task created offline:', localTask.title);
+            }
         } catch (error) {
             console.error('Failed to create task:', error);
             this.showError('Failed to create task');
@@ -630,14 +895,44 @@ class WebTaskApp {
     
     async updateTask(id, updates) {
         try {
-            const taskRef = doc(this.getTasksCollection(), id);
-            const updateData = {
-                ...updates,
-                updatedAt: new Date()
-            };
-            
-            await updateDoc(taskRef, updateData);
-            // Tasks will be updated via real-time subscription
+            if (this.isOnline && this.user) {
+                // Online: update in Firebase
+                const taskRef = doc(this.getTasksCollection(), id);
+                const updateData = {
+                    ...updates,
+                    updatedAt: new Date()
+                };
+                
+                await updateDoc(taskRef, updateData);
+                // Tasks will be updated via real-time subscription
+            } else {
+                // Offline: update local task and queue for sync
+                const taskIndex = this.tasks.findIndex(t => t.id === id);
+                if (taskIndex !== -1) {
+                    this.tasks[taskIndex] = {
+                        ...this.tasks[taskIndex],
+                        ...updates,
+                        updatedAt: Date.now(),
+                        _offline: true
+                    };
+                    this.render();
+                    this.saveTasksToLocal();
+                    
+                    // Queue for sync when back online (only if not already an offline task)
+                    if (this.user && !this.tasks[taskIndex]._offline) {
+                        this.addToOfflineQueue({
+                            type: 'update',
+                            taskId: id,
+                            data: {
+                                ...updates,
+                                updatedAt: new Date()
+                            }
+                        });
+                    }
+                    
+                    console.log('📱 Task updated offline');
+                }
+            }
         } catch (error) {
             console.error('Failed to update task:', error);
             this.showError('Failed to update task');
@@ -646,9 +941,31 @@ class WebTaskApp {
     
     async deleteTask(id) {
         try {
-            const taskRef = doc(this.getTasksCollection(), id);
-            await deleteDoc(taskRef);
-            // Tasks will be updated via real-time subscription
+            if (this.isOnline && this.user) {
+                // Online: delete from Firebase
+                const taskRef = doc(this.getTasksCollection(), id);
+                await deleteDoc(taskRef);
+                // Tasks will be updated via real-time subscription
+            } else {
+                // Offline: remove local task and queue for sync
+                const taskIndex = this.tasks.findIndex(t => t.id === id);
+                if (taskIndex !== -1) {
+                    const task = this.tasks[taskIndex];
+                    this.tasks.splice(taskIndex, 1);
+                    this.render();
+                    this.saveTasksToLocal();
+                    
+                    // Queue for sync when back online (only if not an offline-created task)
+                    if (this.user && !task._offline) {
+                        this.addToOfflineQueue({
+                            type: 'delete',
+                            taskId: id
+                        });
+                    }
+                    
+                    console.log('📱 Task deleted offline');
+                }
+            }
         } catch (error) {
             console.error('Failed to delete task:', error);
             this.showError('Failed to delete task');
@@ -673,19 +990,54 @@ class WebTaskApp {
         }
     }
     
-    async manualSync() {
-        if (!this.isOnline) return;
+    async manualSync(skipQueueProcessing = false) {
+        if (!this.isOnline) {
+            console.log('⚠️ Cannot sync while offline');
+            return;
+        }
         
+        console.log('🔄 Manual sync triggered', skipQueueProcessing ? '(skipping queue)' : '');
         this.syncStatus = 'connecting';
         this.updateSyncStatus();
         
         try {
+            // Process offline queue first (unless skipped)
+            if (!skipQueueProcessing) {
+                await this.processOfflineQueue();
+            }
+            
+            // Then reload tasks from server
             await this.loadTasks();
+            
+            // Clean up any offline-only tasks that were synced
+            this.cleanupOfflineTasks();
+            
             this.syncStatus = 'synced';
-            this.updateSyncStatus();
+            
+            // Force clear any pending indicators with a delay to ensure DOM updates
+            setTimeout(() => {
+                this.updateSyncStatus();
+                console.log('🔄 Final sync status update completed');
+            }, 200);
+            
+            console.log('✅ Manual sync completed');
         } catch (error) {
+            console.error('❌ Manual sync failed:', error);
             this.syncStatus = 'error';
             this.updateSyncStatus();
+        }
+    }
+    
+    cleanupOfflineTasks() {
+        // Remove offline-only tasks that have been synced
+        const beforeCount = this.tasks.length;
+        this.tasks = this.tasks.filter(task => !task._offline || !task.id.startsWith('offline_'));
+        const afterCount = this.tasks.length;
+        
+        if (beforeCount !== afterCount) {
+            console.log(`🧹 Cleaned up ${beforeCount - afterCount} offline tasks`);
+            this.saveTasksToLocal();
+            this.render();
         }
     }
     
@@ -776,16 +1128,25 @@ class WebTaskApp {
             item.classList.add('editing');
             edit.focus();
             edit.setSelectionRange(edit.value.length, edit.value.length);
+            this.autoResizeTextarea(edit);
         });
         
         edit.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 item.classList.remove('editing');
                 edit.value = task.title;
+                this.autoResizeTextarea(edit);
             }
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && e.shiftKey) {
+                // Shift+Enter: Save the edit
+                e.preventDefault();
                 edit.blur();
             }
+            // Just Enter: Allow new line (default behavior)
+        });
+        
+        edit.addEventListener('input', () => {
+            this.autoResizeTextarea(edit);
         });
         
         edit.addEventListener('blur', () => {
@@ -795,6 +1156,7 @@ class WebTaskApp {
                 this.updateTask(task.id, { title: newTitle });
             } else {
                 edit.value = task.title;
+                this.autoResizeTextarea(edit);
             }
         });
         
@@ -883,13 +1245,29 @@ class WebTaskApp {
                 syncText.textContent = 'Synced';
                 break;
             case 'offline':
-                syncIcon.textContent = '📱';
+                syncIcon.textContent = '�';
                 syncText.textContent = 'Offline';
                 break;
             case 'error':
                 syncIcon.textContent = '⚠️';
                 syncText.textContent = 'Error';
                 break;
+        }
+        
+        // Show offline queue count if there are pending operations
+        try {
+            // Show offline queue count if there are pending operations
+            const queueKey = this.getOfflineQueueKey();
+            const stored = localStorage.getItem(queueKey);
+            if (stored) {
+                const queue = JSON.parse(stored);
+                if (queue.length > 0) {
+                    syncText.textContent += ` (${queue.length} pending)`;
+                    console.log(`📦 ${queue.length} operations pending in offline queue`);
+                }
+            }
+        } catch (error) {
+            // Ignore errors accessing localStorage
         }
     }
     
@@ -1176,6 +1554,9 @@ class WebTaskApp {
                     } else if (event.data.type === 'SYNC_FAILED') {
                         this.syncStatus = 'error';
                         this.updateSyncStatus();
+                    } else if (event.data.type === 'PROCESS_OFFLINE_QUEUE') {
+                        // Process any pending offline operations
+                        this.processOfflineQueue();
                     }
                 });
                 
@@ -1206,14 +1587,41 @@ class WebTaskApp {
 document.addEventListener('DOMContentLoaded', () => {
     window.taskApp = new WebTaskApp();
     
-    // Debug helper function
+    // Debug helper functions
     window.debugFirebase = () => {
         console.log('=== Firebase Debug Info ===');
         console.log('App user ID:', window.taskApp.user?.uid);
         console.log('Auth user ID:', window.taskApp.auth?.currentUser?.uid);
         console.log('Collection path:', `users/${window.taskApp.user?.uid}/tasks`);
         console.log('User object:', window.taskApp.user);
+        console.log('Online status:', window.taskApp.isOnline);
+        console.log('Sync status:', window.taskApp.syncStatus);
+        console.log('Tasks count:', window.taskApp.tasks.length);
         console.log('========================');
+    };
+    
+    window.debugOfflineQueue = () => {
+        const queueKey = window.taskApp.getOfflineQueueKey();
+        const stored = localStorage.getItem(queueKey);
+        console.log('=== Offline Queue Debug ===');
+        console.log('Queue key:', queueKey);
+        console.log('Stored queue:', stored);
+        if (stored) {
+            console.log('Parsed queue:', JSON.parse(stored));
+        }
+        console.log('========================');
+    };
+    
+    window.forceSync = async () => {
+        console.log('🔧 Force sync triggered');
+        console.log('🔍 Queue before sync:');
+        window.debugOfflineQueue();
+        await window.taskApp.processOfflineQueue();
+        console.log('🔍 Queue after processing:');
+        window.debugOfflineQueue();
+        await window.taskApp.manualSync();
+        console.log('🔍 Queue after manual sync:');
+        window.debugOfflineQueue();
     };
 });
 

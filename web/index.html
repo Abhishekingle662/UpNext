@@ -12,6 +12,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="UpNext" />
     
+    <!-- Security -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://identitytoolkit.googleapis.com; img-src 'self' data: https://*.googleusercontent.com https://*.googleapis.com; connect-src 'self' https://*.googleapis.com https://*.google.com wss://*.firebaseio.com https://*.firebaseio.com;" />
+    
     <!-- Icons -->
     <link rel="icon" type="image/x-icon" href="./favicon.ico" />
     <link rel="icon" type="image/png" href="./favicon.png" />
@@ -47,12 +50,12 @@
         <main class="main-content">
             <form id="newTaskForm" class="task-form" autocomplete="off">
                 <div class="input-container">
-                    <input 
+                    <textarea 
                         id="taskInput" 
-                        type="text" 
-                        placeholder="Add a task and press Enter…"
+                        placeholder="Add a task… (Enter for new line, Shift+Enter to add)"
                         class="task-input"
-                    />
+                        rows="1"
+                    ></textarea>
                     <button type="submit" class="add-btn" aria-label="Add task">+</button>
                 </div>
             </form>
@@ -100,7 +103,7 @@
                     </div>
                 </div>
                 
-                <input class="task-edit" data-role="edit" />
+                <textarea class="task-edit" data-role="edit" rows="1"></textarea>
                 
                 <div class="task-actions">
                     <button class="action-btn drag-btn" data-role="drag" title="Drag to reorder">⋮⋮</button>
