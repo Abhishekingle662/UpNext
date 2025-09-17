@@ -1,4 +1,4 @@
-const CACHE_NAME = 'upnext-v1.0.5';
+const CACHE_NAME = 'upnext-v0.2.0';
 const STATIC_CACHE_URLS = [
   '/',
   '/index.html',
@@ -246,5 +246,81 @@ self.addEventListener('message', (event) => {
   
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  } else if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+    // Handle notification requests from main app
+    const { title, body, icon, tag, requireInteraction, actions, data, badge } = event.data.data;
+    
+    self.registration.showNotification(title, {
+      body: body,
+      icon: icon || '/icon-192.png',
+      badge: badge || '/icon-72.png',
+      tag: tag,
+      requireInteraction: requireInteraction || false,
+      actions: actions || [],
+      data: data || {},
+      vibrate: [200, 100, 200],
+      timestamp: Date.now()
+    });
   }
+});
+
+// Handle notification clicks
+self.addEventListener('notificationclick', (event) => {
+  console.log('Service Worker: Notification clicked', event);
+  
+  const notification = event.notification;
+  const action = event.action;
+  const data = notification.data;
+  
+  notification.close();
+  
+  // Handle different actions
+  if (action === 'complete') {
+    // Send message to main app to complete task
+    event.waitUntil(
+      self.clients.matchAll().then(clients => {
+        if (clients.length > 0) {
+          clients[0].postMessage({
+            type: 'NOTIFICATION_ACTION',
+            action: 'complete',
+            taskId: data.taskId
+          });
+        }
+      })
+    );
+  } else if (action === 'snooze') {
+    // Send message to main app to snooze task
+    event.waitUntil(
+      self.clients.matchAll().then(clients => {
+        if (clients.length > 0) {
+          clients[0].postMessage({
+            type: 'NOTIFICATION_ACTION',
+            action: 'snooze',
+            taskId: data.taskId
+          });
+        }
+      })
+    );
+  } else if (action === 'view' || !action) {
+    // Open or focus the app
+    event.waitUntil(
+      self.clients.matchAll({ type: 'window' }).then(clients => {
+        // Check if app is already open
+        for (const client of clients) {
+          if (client.url.includes(self.location.origin) && 'focus' in client) {
+            return client.focus();
+          }
+        }
+        // If no window is open, open a new one
+        if (self.clients.openWindow) {
+          return self.clients.openWindow('/');
+        }
+      })
+    );
+  }
+});
+
+// Handle notification close
+self.addEventListener('notificationclose', (event) => {
+  console.log('Service Worker: Notification closed', event);
 });

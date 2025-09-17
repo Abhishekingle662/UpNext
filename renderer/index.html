@@ -17,6 +17,7 @@
 <button id="signOutBtn" class="sign-out-btn" title="Sign out">↗</button>
 </div>
 <button id="signInBtn" class="sign-in-btn" hidden>Sign In</button>
+<button id="settingsBtn" title="Settings">⚙️</button>
 <button id="themeBtn" title="Toggle theme">🌗</button>
 <button id="pinBtn" title="Toggle always on top">📌</button>
 <button id="minBtn" title="Minimize">—</button>
@@ -73,8 +74,39 @@
 </li>
 </template>
 
-
-
+<!-- Settings Modal -->
+<div id="settingsModal" class="modal" hidden>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>⚙️ Settings</h2>
+      <button id="closeSettings" class="close-btn">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="setting-group">
+        <h3>🔔 Notifications</h3>
+        <label class="setting-item">
+          <input type="checkbox" id="notificationsEnabled" />
+          <span>Enable task alerts</span>
+        </label>
+        <div class="setting-item">
+          <label>Alert timing:</label>
+          <div class="checkbox-group">
+            <label><input type="checkbox" id="alertOnTime" checked /> When due</label>
+            <label><input type="checkbox" id="alert5min" checked /> 5 min before</label>
+            <label><input type="checkbox" id="alert15min" checked /> 15 min before</label>
+          </div>
+        </div>
+        <label class="setting-item">
+          <input type="checkbox" id="soundEnabled" />
+          <span>Sound alerts</span>
+        </label>
+        <div class="setting-item">
+          <button id="testNotification" class="test-btn">Test Notification</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script src="./renderer.js" defer></script>
 </body>

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, nativeTheme, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, nativeTheme, dialog, Notification } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs').promises;
 const crypto = require('node:crypto');
@@ -6,6 +6,13 @@ const { firebaseMainService } = require('./firebase-main.cjs');
 
 
 let win;
+let alertTimer;
+let notificationSettings = {
+	enabled: true,
+	beforeMinutes: [0, 5, 15], // Alert at due time, 5 min before, 15 min before
+	sound: true,
+	showInTray: true
+};
 const isDev = !app.isPackaged;
 const tasksFile = () => path.join(app.getPath('userData'), 'tasks.json');
 const boundsFile = () => path.join(app.getPath('userData'), 'window-bounds.json');
@@ -228,6 +235,258 @@ async function writeUIPrefs(prefs) {
 	try { await fs.writeFile(uiPrefsPath(), JSON.stringify(prefs, null, 2), 'utf-8'); } catch {}
 }
 
+// --- Alert System ---
+async function readNotificationSettings() {
+	try {
+		const settingsPath = path.join(app.getPath('userData'), 'notification-settings.json');
+		const raw = await fs.readFile(settingsPath, 'utf-8');
+		return { ...notificationSettings, ...JSON.parse(raw) };
+	} catch {
+		return notificationSettings;
+	}
+}
+
+async function writeNotificationSettings(settings) {
+	try {
+		const settingsPath = path.join(app.getPath('userData'), 'notification-settings.json');
+		await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+		notificationSettings = { ...notificationSettings, ...settings };
+	} catch (error) {
+		console.error('Failed to save notification settings:', error);
+	}
+}
+
+function showTaskAlert(task, minutesBefore = 0) {
+	if (!notificationSettings.enabled) return;
+	
+	const title = minutesBefore > 0 
+		? `Task Due in ${minutesBefore} minutes`
+		: 'Task is Due Now!';
+	
+	const body = task.title.length > 60 
+		? task.title.substring(0, 60) + '...'
+		: task.title;
+	
+	const priorityEmoji = task.priority === 3 ? '🔴' : task.priority === 2 ? '🟡' : task.priority === 1 ? '🔵' : '';
+	
+	const notification = new Notification({
+		title: `${priorityEmoji} ${title}`.trim(),
+		body: body,
+		icon: path.join(__dirname, 'assets', 'icon.ico'),
+		urgency: task.priority >= 2 ? 'critical' : 'normal',
+		timeoutType: task.priority >= 2 ? 'never' : 'default',
+		actions: minutesBefore === 0 ? [
+			{ type: 'button', text: 'Mark Complete' },
+			{ type: 'button', text: 'Snooze 10min' }
+		] : [
+			{ type: 'button', text: 'Show App' }
+		]
+	});
+	
+	notification.on('click', () => {
+		if (win) {
+			win.show();
+			win.focus();
+		}
+	});
+	
+	notification.on('action', (event, index) => {
+		if (minutesBefore === 0) {
+			if (index === 0) {
+				// Mark complete
+				handleMarkTaskComplete(task.id);
+			} else if (index === 1) {
+				// Snooze 10 minutes
+				handleSnoozeTask(task.id, 10);
+			}
+		} else {
+			// Show app
+			if (win) {
+				win.show();
+				win.focus();
+			}
+		}
+	});
+	
+	notification.show();
+}
+
+async function handleMarkTaskComplete(taskId) {
+	try {
+		// Update via existing IPC handler logic
+		const tasks = await readTasks();
+		const taskIndex = tasks.findIndex(t => t.id === taskId);
+		if (taskIndex !== -1) {
+			tasks[taskIndex].completed = true;
+			tasks[taskIndex].completedAt = Date.now();
+			await writeTasks(tasks);
+			
+			// Also try Firebase if available
+			try {
+				await firebaseMainService.updateTask(taskId, { completed: true, completedAt: Date.now() });
+			} catch (error) {
+				console.log('Firebase update failed (notification), continuing with local:', error.message);
+			}
+			
+			// Notify renderer
+			if (win) {
+				win.webContents.send('tasks:updated');
+			}
+		}
+	} catch (error) {
+		console.error('Failed to complete task from notification:', error);
+	}
+}
+
+async function handleSnoozeTask(taskId, minutes) {
+	try {
+		const tasks = await readTasks();
+		const taskIndex = tasks.findIndex(t => t.id === taskId);
+		if (taskIndex !== -1) {
+			const task = tasks[taskIndex];
+			const newDueTime = (task.dueAt || Date.now()) + (minutes * 60 * 1000);
+			
+			// Update title to reflect new time
+			let newTitle = task.title;
+			const now = new Date(newDueTime);
+			const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+			
+			// Remove existing time patterns and add new one
+			newTitle = newTitle.replace(/\b\d{1,2}(:\d{2})?\s*(am|pm)\b/gi, '').trim();
+			newTitle += ` ${timeStr.toLowerCase()}`;
+			
+			tasks[taskIndex].title = newTitle;
+			tasks[taskIndex].dueAt = newDueTime;
+			tasks[taskIndex].updatedAt = Date.now();
+			
+			await writeTasks(tasks);
+			
+			// Also try Firebase if available
+			try {
+				await firebaseMainService.updateTask(taskId, { 
+					title: newTitle,
+					dueAt: newDueTime, 
+					updatedAt: Date.now() 
+				});
+			} catch (error) {
+				console.log('Firebase update failed (snooze), continuing with local:', error.message);
+			}
+			
+			// Notify renderer
+			if (win) {
+				win.webContents.send('tasks:updated');
+			}
+		}
+	} catch (error) {
+		console.error('Failed to snooze task:', error);
+	}
+}
+
+async function checkDueTasks() {
+	if (!notificationSettings.enabled) return;
+	
+	try {
+		let tasks = [];
+		
+		// Try Firebase first, fallback to local
+		try {
+			tasks = await firebaseMainService.loadTasks();
+		} catch (error) {
+			console.log('Firebase check failed, using local tasks:', error.message);
+			tasks = await readTasks();
+		}
+		
+		const now = Date.now();
+		const alertedTasksKey = 'alertedTasks_' + new Date().toDateString();
+		const alertedTasksPath = path.join(app.getPath('temp'), alertedTasksKey + '.json');
+		
+		let alertedTasks = {};
+		try {
+			const alertedData = await fs.readFile(alertedTasksPath, 'utf-8');
+			alertedTasks = JSON.parse(alertedData);
+		} catch {
+			alertedTasks = {};
+		}
+		
+		for (const task of tasks) {
+			if (!task.dueAt || task.completed) continue;
+			
+			const timeToDue = task.dueAt - now;
+			const taskAlertKey = `${task.id}_${task.dueAt}`;
+			
+			// Check each alert time
+			for (const beforeMinutes of notificationSettings.beforeMinutes) {
+				const alertTime = beforeMinutes * 60 * 1000; // Convert to milliseconds
+				const alertKey = `${taskAlertKey}_${beforeMinutes}`;
+				
+				// Skip if already alerted for this specific time
+				if (alertedTasks[alertKey]) continue;
+				
+				// Check if it's time to alert
+				if (beforeMinutes === 0) {
+					// Alert when due (within 1 minute window)
+					if (timeToDue <= 60000 && timeToDue >= -60000) {
+						showTaskAlert(task, 0);
+						alertedTasks[alertKey] = true;
+					}
+				} else {
+					// Alert before due time (within 1 minute window)
+					if (timeToDue <= (alertTime + 60000) && timeToDue >= (alertTime - 60000)) {
+						showTaskAlert(task, beforeMinutes);
+						alertedTasks[alertKey] = true;
+					}
+				}
+			}
+		}
+		
+		// Save updated alerted tasks
+		try {
+			await fs.writeFile(alertedTasksPath, JSON.stringify(alertedTasks), 'utf-8');
+		} catch (error) {
+			console.warn('Failed to save alerted tasks:', error);
+		}
+		
+		// Clean up old alerted task files (older than 7 days)
+		try {
+			const tempDir = app.getPath('temp');
+			const files = await fs.readdir(tempDir);
+			const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+			
+			for (const file of files) {
+				if (file.startsWith('alertedTasks_') && file.endsWith('.json')) {
+					const filePath = path.join(tempDir, file);
+					const stats = await fs.stat(filePath);
+					if (stats.mtime.getTime() < sevenDaysAgo) {
+						await fs.unlink(filePath);
+					}
+				}
+			}
+		} catch (error) {
+			console.warn('Failed to cleanup old alerted tasks:', error);
+		}
+		
+	} catch (error) {
+		console.error('Error checking due tasks:', error);
+	}
+}
+
+function startAlertTimer() {
+	if (alertTimer) clearInterval(alertTimer);
+	
+	// Check every minute
+	alertTimer = setInterval(checkDueTasks, 60000);
+	
+	// Also check immediately
+	setTimeout(checkDueTasks, 2000); // Wait 2 seconds after startup
+}
+
+function stopAlertTimer() {
+	if (alertTimer) {
+		clearInterval(alertTimer);
+		alertTimer = null;
+	}
+}
+
 async function createWindow() {
 	const saved = await readBounds();
 	win = new BrowserWindow({
@@ -292,6 +551,10 @@ app.whenReady().then(async () => {
 	} catch {}
 
 	await createWindow();
+	
+	// Load notification settings and start alert system
+	notificationSettings = await readNotificationSettings();
+	startAlertTimer();
 
 	// One-time welcome note after install/first run
 	try {
@@ -537,4 +800,39 @@ ipcMain.handle('auth:checkStoredAuth', async () => {
 		console.error('Failed to check stored auth:', error);
 		return { hasStoredAuth: false };
 	}
+});
+
+// Notification settings handlers
+ipcMain.handle('notifications:getSettings', async () => {
+	return await readNotificationSettings();
+});
+
+ipcMain.handle('notifications:updateSettings', async (_evt, settings) => {
+	await writeNotificationSettings(settings);
+	
+	// Restart alert timer with new settings
+	if (settings.enabled && !alertTimer) {
+		startAlertTimer();
+	} else if (!settings.enabled && alertTimer) {
+		stopAlertTimer();
+	}
+	
+	return { ok: true };
+});
+
+ipcMain.handle('notifications:testAlert', async () => {
+	const testTask = {
+		id: 'test',
+		title: 'Test Notification - This is how alerts will look!',
+		priority: 2,
+		dueAt: Date.now()
+	};
+	
+	showTaskAlert(testTask, 0);
+	return { ok: true };
+});
+
+// Cleanup on app quit
+app.on('before-quit', () => {
+	stopAlertTimer();
 });

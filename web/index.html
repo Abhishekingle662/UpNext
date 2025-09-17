@@ -21,7 +21,7 @@
     <link rel="apple-touch-icon" href="./icon-192.png" />
     <link rel="apple-touch-icon" sizes="152x152" href="./icon-152.png" />
     <link rel="apple-touch-icon" sizes="192x192" href="./icon-192.png" />
-    <link rel="manifest" href="./manifest.json?v=1.0.5" />
+    <link rel="manifest" href="./manifest.json?v=0.2.0" />
     
     <!-- Styles -->
     <link rel="stylesheet" href="./web-styles.css" />
@@ -42,6 +42,7 @@
                         <span class="sync-icon">🔄</span>
                         <span class="sync-text">Syncing...</span>
                     </button>
+                    <button id="settingsBtn" class="icon-btn" title="Settings">⚙️</button>
                     <button id="themeBtn" class="icon-btn" title="Toggle theme">🌗</button>
                 </div>
             </div>
@@ -123,6 +124,47 @@
         }
     }
     </script>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal" hidden>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚙️ Settings</h2>
+                <button id="closeSettings" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="setting-group">
+                    <h3>🔔 Notifications</h3>
+                    <label class="setting-item">
+                        <input type="checkbox" id="notificationsEnabled" />
+                        <span>Enable task alerts</span>
+                    </label>
+                    <div class="setting-item">
+                        <label>Alert timing:</label>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" id="alertOnTime" checked /> When due</label>
+                            <label><input type="checkbox" id="alert5min" checked /> 5 min before</label>
+                            <label><input type="checkbox" id="alert15min" checked /> 15 min before</label>
+                        </div>
+                    </div>
+                    <label class="setting-item">
+                        <input type="checkbox" id="soundEnabled" />
+                        <span>Sound alerts</span>
+                    </label>
+                    <label class="setting-item">
+                        <input type="checkbox" id="persistentEnabled" checked />
+                        <span>Persistent notifications</span>
+                    </label>
+                    <div class="setting-item">
+                        <button id="testNotification" class="test-btn">Test Notification</button>
+                    </div>
+                    <div class="setting-note">
+                        <small>💡 Grant notification permission for alerts to work</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <!-- Scripts -->
     <script type="module" src="./web-app.js"></script>

@@ -15,7 +15,11 @@ contextBridge.exposeInMainWorld('api', {
   signInWithGoogle: () => ipcRenderer.invoke('auth:signInWithGoogle'),
   signOut: () => ipcRenderer.invoke('auth:signOut'),
   getCurrentUser: () => ipcRenderer.invoke('auth:getCurrentUser'),
-  checkStoredAuth: () => ipcRenderer.invoke('auth:checkStoredAuth')
+  checkStoredAuth: () => ipcRenderer.invoke('auth:checkStoredAuth'),
+  // Notification methods
+  getNotificationSettings: () => ipcRenderer.invoke('notifications:getSettings'),
+  updateNotificationSettings: (settings) => ipcRenderer.invoke('notifications:updateSettings', settings),
+  testNotification: () => ipcRenderer.invoke('notifications:testAlert')
 });
 
 // Expose auth state change listener

@@ -42,6 +42,17 @@ class WebTaskApp {
         this.deferredPrompt = null;
         this.installButton = null;
         
+        // Notification system
+        this.notificationPermission = 'default';
+        this.alertTimer = null;
+        this.alertedTasks = new Set();
+        this.notificationSettings = {
+            enabled: true,
+            beforeMinutes: [0, 5, 15], // Alert at due time, 5 min before, 15 min before
+            sound: true,
+            persistent: true
+        };
+        
         // DOM elements
         this.elements = {
             form: document.getElementById('newTaskForm'),
@@ -61,7 +72,18 @@ class WebTaskApp {
             userPhoto: document.getElementById('userPhoto'),
             userName: document.getElementById('userName'),
             signInBtn: document.getElementById('signInBtn'),
-            signOutBtn: document.getElementById('signOutBtn')
+            signOutBtn: document.getElementById('signOutBtn'),
+            // Settings elements
+            settingsBtn: document.getElementById('settingsBtn'),
+            settingsModal: document.getElementById('settingsModal'),
+            closeSettings: document.getElementById('closeSettings'),
+            notificationsEnabled: document.getElementById('notificationsEnabled'),
+            alertOnTime: document.getElementById('alertOnTime'),
+            alert5min: document.getElementById('alert5min'),
+            alert15min: document.getElementById('alert15min'),
+            soundEnabled: document.getElementById('soundEnabled'),
+            persistentEnabled: document.getElementById('persistentEnabled'),
+            testNotification: document.getElementById('testNotification')
         };
         
         this.init();
@@ -111,6 +133,8 @@ class WebTaskApp {
         this.setupEventListeners();
         this.setupNetworkListeners();
         this.setupPWAInstall();
+        this.setupNotificationSystem();
+        this.setupServiceWorkerMessages();
         this.loadTheme();
         this.hideLoadingIndicator();
         this.registerServiceWorker();
@@ -574,6 +598,9 @@ class WebTaskApp {
         // Auth buttons
         this.elements.signInBtn.addEventListener('click', () => this.handleSignIn());
         this.elements.signOutBtn.addEventListener('click', () => this.signOutUser());
+        
+        // Settings
+        this.setupSettingsHandlers();
     }
     
     setupTaskInputHandlers() {
@@ -661,6 +688,89 @@ class WebTaskApp {
             // Load tasks from local storage when offline
             this.loadOfflineTasks();
         });
+    }
+    
+    setupSettingsHandlers() {
+        // Settings button click
+        this.elements.settingsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.updateSettingsUI();
+            this.elements.settingsModal.style.display = 'flex';
+            this.elements.settingsModal.hidden = false;
+        });
+        
+        // Close settings modal
+        this.elements.closeSettings.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.elements.settingsModal.style.display = 'none';
+            this.elements.settingsModal.hidden = true;
+        });
+        
+        // Close modal when clicking outside
+        this.elements.settingsModal.addEventListener('click', (e) => {
+            if (e.target === this.elements.settingsModal) {
+                e.preventDefault();
+                this.elements.settingsModal.style.display = 'none';
+                this.elements.settingsModal.hidden = true;
+            }
+        });
+        
+        // Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !this.elements.settingsModal.hidden) {
+                e.preventDefault();
+                this.elements.settingsModal.style.display = 'none';
+                this.elements.settingsModal.hidden = true;
+            }
+        });
+        
+        // Save settings when changed
+        [
+            this.elements.notificationsEnabled,
+            this.elements.alertOnTime,
+            this.elements.alert5min,
+            this.elements.alert15min,
+            this.elements.soundEnabled,
+            this.elements.persistentEnabled
+        ].forEach(input => {
+            input.addEventListener('change', () => this.saveNotificationSettings());
+        });
+        
+        // Test notification
+        this.elements.testNotification.addEventListener('click', () => {
+            this.testNotification();
+        });
+    }
+    
+    updateSettingsUI() {
+        const settings = this.notificationSettings;
+        
+        this.elements.notificationsEnabled.checked = settings.enabled;
+        this.elements.soundEnabled.checked = settings.sound;
+        this.elements.persistentEnabled.checked = settings.persistent;
+        
+        const beforeMinutes = settings.beforeMinutes || [0, 5, 15];
+        this.elements.alertOnTime.checked = beforeMinutes.includes(0);
+        this.elements.alert5min.checked = beforeMinutes.includes(5);
+        this.elements.alert15min.checked = beforeMinutes.includes(15);
+    }
+    
+    saveNotificationSettings() {
+        const beforeMinutes = [];
+        if (this.elements.alertOnTime.checked) beforeMinutes.push(0);
+        if (this.elements.alert5min.checked) beforeMinutes.push(5);
+        if (this.elements.alert15min.checked) beforeMinutes.push(15);
+        
+        const newSettings = {
+            ...this.notificationSettings,
+            enabled: this.elements.notificationsEnabled.checked,
+            sound: this.elements.soundEnabled.checked,
+            persistent: this.elements.persistentEnabled.checked,
+            beforeMinutes: beforeMinutes
+        };
+        
+        this.updateNotificationSettings(newSettings);
     }
 
     // Local storage methods for offline support
@@ -1573,6 +1683,267 @@ class WebTaskApp {
         }
     }
     
+    // --- Notification System ---
+    async setupNotificationSystem() {
+        // Request notification permission
+        if ('Notification' in window) {
+            this.notificationPermission = await Notification.requestPermission();
+            console.log('📱 Notification permission:', this.notificationPermission);
+            
+            // Load saved settings
+            this.loadNotificationSettings();
+            
+            // Start alert checking
+            this.startAlertTimer();
+        } else {
+            console.warn('⚠️ Notifications not supported in this browser');
+        }
+    }
+    
+    setupServiceWorkerMessages() {
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                console.log('📱 Message from service worker:', event.data);
+                
+                if (event.data && event.data.type === 'NOTIFICATION_ACTION') {
+                    const { action, taskId } = event.data;
+                    this.handleNotificationAction(action, taskId);
+                }
+            });
+        }
+    }
+    
+    loadNotificationSettings() {
+        try {
+            const saved = localStorage.getItem('notificationSettings');
+            if (saved) {
+                this.notificationSettings = { ...this.notificationSettings, ...JSON.parse(saved) };
+            }
+        } catch (error) {
+            console.warn('Failed to load notification settings:', error);
+        }
+    }
+    
+    saveNotificationSettings() {
+        try {
+            localStorage.setItem('notificationSettings', JSON.stringify(this.notificationSettings));
+        } catch (error) {
+            console.warn('Failed to save notification settings:', error);
+        }
+    }
+    
+    updateNotificationSettings(settings) {
+        this.notificationSettings = { ...this.notificationSettings, ...settings };
+        this.saveNotificationSettings();
+        
+        // Restart alert timer if needed
+        if (settings.enabled && !this.alertTimer) {
+            this.startAlertTimer();
+        } else if (!settings.enabled && this.alertTimer) {
+            this.stopAlertTimer();
+        }
+    }
+    
+    showTaskAlert(task, minutesBefore = 0) {
+        if (!this.notificationSettings.enabled || this.notificationPermission !== 'granted') {
+            return;
+        }
+        
+        const title = minutesBefore > 0 
+            ? `Task Due in ${minutesBefore} minutes`
+            : 'Task is Due Now!';
+        
+        const body = task.title.length > 60 
+            ? task.title.substring(0, 60) + '...'
+            : task.title;
+        
+        const priorityEmoji = task.priority === 3 ? '🔴' : task.priority === 2 ? '🟡' : task.priority === 1 ? '🔵' : '';
+        
+        // Try to use service worker notification for persistence
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+                type: 'SHOW_NOTIFICATION',
+                data: {
+                    title: `${priorityEmoji} ${title}`.trim(),
+                    body: body,
+                    icon: '/icon-192.png',
+                    badge: '/icon-72.png',
+                    tag: `task-${task.id}`,
+                    requireInteraction: task.priority >= 2,
+                    actions: minutesBefore === 0 ? [
+                        { action: 'complete', title: 'Mark Complete', icon: '/icon-72.png' },
+                        { action: 'snooze', title: 'Snooze 10min', icon: '/icon-72.png' }
+                    ] : [
+                        { action: 'view', title: 'View App', icon: '/icon-72.png' }
+                    ],
+                    data: { taskId: task.id, minutesBefore, priority: task.priority }
+                }
+            });
+        } else {
+            // Fallback to regular notification
+            const notification = new Notification(`${priorityEmoji} ${title}`.trim(), {
+                body: body,
+                icon: '/icon-192.png',
+                tag: `task-${task.id}`,
+                requireInteraction: task.priority >= 2,
+                silent: !this.notificationSettings.sound
+            });
+            
+            notification.onclick = () => {
+                window.focus();
+                notification.close();
+            };
+            
+            // Auto-close after 10 seconds for low priority
+            if (task.priority < 2) {
+                setTimeout(() => notification.close(), 10000);
+            }
+        }
+    }
+    
+    checkDueTasks() {
+        if (!this.notificationSettings.enabled) return;
+        
+        const now = Date.now();
+        const today = new Date().toDateString();
+        
+        // Get alerted tasks for today
+        const alertedKey = `alertedTasks_${today}`;
+        let alertedToday = {};
+        try {
+            alertedToday = JSON.parse(localStorage.getItem(alertedKey) || '{}');
+        } catch (e) {
+            alertedToday = {};
+        }
+        
+        for (const task of this.tasks) {
+            if (!task.dueAt || task.completed) continue;
+            
+            const timeToDue = task.dueAt - now;
+            const taskAlertKey = `${task.id}_${task.dueAt}`;
+            
+            // Check each alert time
+            for (const beforeMinutes of this.notificationSettings.beforeMinutes) {
+                const alertTime = beforeMinutes * 60 * 1000; // Convert to milliseconds
+                const alertKey = `${taskAlertKey}_${beforeMinutes}`;
+                
+                // Skip if already alerted for this specific time
+                if (alertedToday[alertKey]) continue;
+                
+                // Check if it's time to alert
+                if (beforeMinutes === 0) {
+                    // Alert when due (within 1 minute window)
+                    if (timeToDue <= 60000 && timeToDue >= -60000) {
+                        this.showTaskAlert(task, 0);
+                        alertedToday[alertKey] = true;
+                    }
+                } else {
+                    // Alert before due time (within 1 minute window)
+                    if (timeToDue <= (alertTime + 60000) && timeToDue >= (alertTime - 60000)) {
+                        this.showTaskAlert(task, beforeMinutes);
+                        alertedToday[alertKey] = true;
+                    }
+                }
+            }
+        }
+        
+        // Save updated alerted tasks
+        try {
+            localStorage.setItem(alertedKey, JSON.stringify(alertedToday));
+        } catch (e) {
+            console.warn('Failed to save alerted tasks:', e);
+        }
+        
+        // Clean up old alerted tasks (older than 7 days)
+        this.cleanupOldAlertedTasks();
+    }
+    
+    cleanupOldAlertedTasks() {
+        try {
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('alertedTasks_')) {
+                    const dateStr = key.replace('alertedTasks_', '');
+                    const date = new Date(dateStr);
+                    if (date < sevenDaysAgo) {
+                        localStorage.removeItem(key);
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to cleanup old alerted tasks:', e);
+        }
+    }
+    
+    startAlertTimer() {
+        if (this.alertTimer) clearInterval(this.alertTimer);
+        
+        // Check every minute
+        this.alertTimer = setInterval(() => this.checkDueTasks(), 60000);
+        
+        // Also check immediately (after a short delay)
+        setTimeout(() => this.checkDueTasks(), 2000);
+    }
+    
+    stopAlertTimer() {
+        if (this.alertTimer) {
+            clearInterval(this.alertTimer);
+            this.alertTimer = null;
+        }
+    }
+    
+    async handleNotificationAction(action, taskId) {
+        const task = this.tasks.find(t => t.id === taskId);
+        if (!task) return;
+        
+        switch (action) {
+            case 'complete':
+                await this.updateTask(taskId, { completed: true });
+                break;
+            case 'snooze':
+                await this.snoozeTask(taskId, 10); // 10 minutes
+                break;
+            case 'view':
+                window.focus();
+                break;
+        }
+    }
+    
+    async snoozeTask(taskId, minutes) {
+        const task = this.tasks.find(t => t.id === taskId);
+        if (!task) return;
+        
+        const newDueTime = (task.dueAt || Date.now()) + (minutes * 60 * 1000);
+        
+        // Update title to reflect new time
+        let newTitle = task.title;
+        const now = new Date(newDueTime);
+        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        // Remove existing time patterns and add new one
+        newTitle = newTitle.replace(/\b\d{1,2}(:\d{2})?\s*(am|pm)\b/gi, '').trim();
+        newTitle += ` ${timeStr.toLowerCase()}`;
+        
+        await this.updateTask(taskId, { 
+            title: newTitle,
+            dueAt: newDueTime
+        });
+    }
+    
+    testNotification() {
+        const testTask = {
+            id: 'test-' + Date.now(),
+            title: 'Test Notification - This is how alerts will look!',
+            priority: 2,
+            dueAt: Date.now()
+        };
+        
+        this.showTaskAlert(testTask, 0);
+    }
+    
     cleanup() {
         if (this.unsubscribe) {
             this.unsubscribe();
@@ -1580,6 +1951,7 @@ class WebTaskApp {
         if (this.authStateUnsubscribe) {
             this.authStateUnsubscribe();
         }
+        this.stopAlertTimer();
     }
 }
 

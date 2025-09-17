@@ -1,6 +1,6 @@
 {
   "name": "upnext",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "main": "main.cjs",
@@ -18,9 +18,9 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "zip-dist": "npm run pack && node create-zip-dist.cjs",
-    "version:patch": "node increment-version.js patch",
-    "version:minor": "node increment-version.js minor",
-    "version:major": "node increment-version.js major",
+    "version:patch": "node increment-version.cjs patch",
+    "version:minor": "node increment-version.cjs minor",
+    "version:major": "node increment-version.cjs major",
     "release": "npm run version:patch && npm run zip-dist",
     "serve-web": "node serve-web.js",
     "setup": "node setup.js"

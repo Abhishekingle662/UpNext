@@ -8,10 +8,21 @@ const emptyEl = $('#empty');
 const countEl = $('#count');
 const clearBtn = $('#clearCompleted');
 const pinBtn = $('#pinBtn');
+const settingsBtn = $('#settingsBtn');
 const themeBtn = $('#themeBtn');
 const minBtn = $('#minBtn');
 const closeBtn = $('#closeBtn');
 const tpl = document.getElementById('itemTpl');
+
+// Settings modal elements
+const settingsModal = $('#settingsModal');
+const closeSettings = $('#closeSettings');
+const notificationsEnabled = $('#notificationsEnabled');
+const alertOnTime = $('#alertOnTime');
+const alert5min = $('#alert5min');
+const alert15min = $('#alert15min');
+const soundEnabled = $('#soundEnabled');
+const testNotification = $('#testNotification');
 
 let tasks = [];
 
@@ -232,6 +243,98 @@ themeBtn.addEventListener('click', () => {
 	const next = document.documentElement.classList.contains('light') ? 'dark' : 'light';
 	applyTheme(next);
 	localStorage.setItem('theme', next);
+});
+
+// Settings modal
+let notificationSettings = null;
+
+async function loadNotificationSettings() {
+	try {
+		notificationSettings = await window.api.getNotificationSettings();
+		updateSettingsUI();
+	} catch (error) {
+		console.error('Failed to load notification settings:', error);
+	}
+}
+
+function updateSettingsUI() {
+	if (!notificationSettings) return;
+	
+	notificationsEnabled.checked = notificationSettings.enabled;
+	soundEnabled.checked = notificationSettings.sound;
+	
+	const beforeMinutes = notificationSettings.beforeMinutes || [0, 5, 15];
+	alertOnTime.checked = beforeMinutes.includes(0);
+	alert5min.checked = beforeMinutes.includes(5);
+	alert15min.checked = beforeMinutes.includes(15);
+}
+
+async function saveNotificationSettings() {
+	if (!notificationSettings) return;
+	
+	const beforeMinutes = [];
+	if (alertOnTime.checked) beforeMinutes.push(0);
+	if (alert5min.checked) beforeMinutes.push(5);
+	if (alert15min.checked) beforeMinutes.push(15);
+	
+	const newSettings = {
+		...notificationSettings,
+		enabled: notificationsEnabled.checked,
+		sound: soundEnabled.checked,
+		beforeMinutes: beforeMinutes
+	};
+	
+	try {
+		await window.api.updateNotificationSettings(newSettings);
+		notificationSettings = newSettings;
+	} catch (error) {
+		console.error('Failed to save notification settings:', error);
+	}
+}
+
+settingsBtn.addEventListener('click', async (e) => {
+	e.preventDefault();
+	await loadNotificationSettings();
+	settingsModal.style.display = 'flex';
+	settingsModal.hidden = false;
+});
+
+closeSettings.addEventListener('click', (e) => {
+	e.preventDefault();
+	e.stopPropagation();
+	settingsModal.style.display = 'none';
+	settingsModal.hidden = true;
+});
+
+// Close modal when clicking outside
+settingsModal.addEventListener('click', (e) => {
+	if (e.target === settingsModal) {
+		e.preventDefault();
+		settingsModal.style.display = 'none';
+		settingsModal.hidden = true;
+	}
+});
+
+// Close modal on Escape key
+document.addEventListener('keydown', (e) => {
+	if (e.key === 'Escape' && !settingsModal.hidden) {
+		e.preventDefault();
+		settingsModal.style.display = 'none';
+		settingsModal.hidden = true;
+	}
+});
+
+// Save settings when changed
+[notificationsEnabled, alertOnTime, alert5min, alert15min, soundEnabled].forEach(input => {
+	input.addEventListener('change', saveNotificationSettings);
+});
+
+testNotification.addEventListener('click', async () => {
+	try {
+		await window.api.testNotification();
+	} catch (error) {
+		console.error('Failed to test notification:', error);
+	}
 });
 
 // Authentication elements
