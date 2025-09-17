@@ -23,6 +23,9 @@
     "version:minor": "node increment-version.cjs minor",
     "version:major": "node increment-version.cjs major",
     "release": "npm run version:patch && npm run zip-dist",
+    "release:patch": "npm version patch && git push origin main --tags && npm run publish",
+    "release:minor": "npm version minor && git push origin main --tags && npm run publish",
+    "release:major": "npm version major && git push origin main --tags && npm run publish",
     "serve-web": "node serve-web.js",
     "setup": "node setup.js"
   },
