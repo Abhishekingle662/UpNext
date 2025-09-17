@@ -445,6 +445,142 @@ async function loadAndRenderTasks() {
 	}
 }
 
+// Update Manager
+class UpdateManager {
+	constructor() {
+		this.updateNotification = null;
+		this.setupUpdateListeners();
+	}
+
+	setupUpdateListeners() {
+		// Listen for update events from main process
+		window.electronAPI?.onUpdateAvailable?.((info) => {
+			this.showUpdateAvailable(info);
+		});
+
+		window.electronAPI?.onUpdateProgress?.((progress) => {
+			this.showUpdateProgress(progress);
+		});
+
+		window.electronAPI?.onUpdateDownloaded?.((info) => {
+			this.showUpdateReady(info);
+		});
+	}
+
+	showUpdateAvailable(info) {
+		this.hideUpdateNotification();
+		
+		const notification = document.createElement('div');
+		notification.className = 'update-notification update-available';
+		notification.innerHTML = `
+			<div class="update-content">
+				<div class="update-icon">🔄</div>
+				<div class="update-text">
+					<div class="update-title">Update Available</div>
+					<div class="update-message">Version ${info?.version || 'newer'} is ready to download</div>
+				</div>
+				<div class="update-actions">
+					<button class="update-btn update-btn-secondary" onclick="updateManager.hideUpdateNotification()">Later</button>
+					<button class="update-btn update-btn-primary" onclick="updateManager.downloadUpdate()">Download</button>
+				</div>
+			</div>
+		`;
+		
+		document.body.appendChild(notification);
+		this.updateNotification = notification;
+		
+		// Auto-hide after 10 seconds
+		setTimeout(() => {
+			if (this.updateNotification === notification) {
+				this.hideUpdateNotification();
+			}
+		}, 10000);
+	}
+
+	showUpdateProgress(progress) {
+		if (!this.updateNotification || !this.updateNotification.classList.contains('update-available')) {
+			return;
+		}
+		
+		const actionsEl = this.updateNotification.querySelector('.update-actions');
+		if (actionsEl) {
+			actionsEl.innerHTML = `
+				<div class="update-progress">
+					<div class="update-progress-bar">
+						<div class="update-progress-fill" style="width: ${progress.percent}%"></div>
+					</div>
+					<div class="update-progress-text">${Math.round(progress.percent)}%</div>
+				</div>
+			`;
+		}
+	}
+
+	showUpdateReady(info) {
+		this.hideUpdateNotification();
+		
+		const notification = document.createElement('div');
+		notification.className = 'update-notification update-ready';
+		notification.innerHTML = `
+			<div class="update-content">
+				<div class="update-icon">✅</div>
+				<div class="update-text">
+					<div class="update-title">Update Ready</div>
+					<div class="update-message">Restart to install version ${info?.version || 'newer'}</div>
+				</div>
+				<div class="update-actions">
+					<button class="update-btn update-btn-secondary" onclick="updateManager.hideUpdateNotification()">Later</button>
+					<button class="update-btn update-btn-primary" onclick="updateManager.installUpdate()">Restart Now</button>
+				</div>
+			</div>
+		`;
+		
+		document.body.appendChild(notification);
+		this.updateNotification = notification;
+	}
+
+	async downloadUpdate() {
+		// Update button text to show it's downloading
+		const btn = this.updateNotification?.querySelector('.update-btn-primary');
+		if (btn) {
+			btn.textContent = 'Downloading...';
+			btn.disabled = true;
+		}
+		// The download will start automatically when update is available
+	}
+
+	async installUpdate() {
+		try {
+			await window.api.downloadAndInstall();
+		} catch (error) {
+			console.error('Failed to install update:', error);
+		}
+	}
+
+	async checkForUpdates() {
+		try {
+			const result = await window.api.checkForUpdates();
+			if (result.error) {
+				console.error('Update check failed:', result.error);
+			} else if (result.message) {
+				console.log(result.message);
+			}
+			return result;
+		} catch (error) {
+			console.error('Failed to check for updates:', error);
+		}
+	}
+
+	hideUpdateNotification() {
+		if (this.updateNotification) {
+			this.updateNotification.remove();
+			this.updateNotification = null;
+		}
+	}
+}
+
+// Initialize update manager
+const updateManager = new UpdateManager();
+
 // Init
 (async function init() {
 	// Check current user state

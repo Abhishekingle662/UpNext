@@ -17,6 +17,7 @@
     "dev": "electronmon .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
+    "publish": "electron-builder --publish=always",
     "zip-dist": "npm run pack && node create-zip-dist.cjs",
     "version:patch": "node increment-version.cjs patch",
     "version:minor": "node increment-version.cjs minor",
@@ -26,6 +27,7 @@
     "setup": "node setup.js"
   },
   "dependencies": {
+    "electron-updater": "^6.6.2",
     "firebase": "^10.7.1"
   },
   "devDependencies": {
@@ -46,6 +48,11 @@
       "package.json",
       "assets/**"
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "Abhishekingle662",
+      "repo": "UpNext"
+    },
     "win": {
       "target": [
         {
@@ -62,9 +69,12 @@
       ]
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": false
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "UpNext"
     }
   }
 }

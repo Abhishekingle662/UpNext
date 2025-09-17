@@ -272,3 +272,135 @@ main { padding: 12px; }
 .test-btn:hover {
   opacity: 0.9;
 }
+
+/* Update Notification Styles */
+.update-notification {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  z-index: 1000;
+  min-width: 320px;
+  max-width: 400px;
+  animation: slideInUpdate 0.3s ease-out;
+}
+
+@keyframes slideInUpdate {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.update-content {
+  padding: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.update-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.update-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.update-title {
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.update-message {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.update-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  margin-left: 32px;
+}
+
+.update-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.update-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.update-btn-primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.update-btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.update-btn-secondary {
+  background: transparent;
+  color: var(--muted);
+}
+
+.update-btn-secondary:hover {
+  background: var(--border);
+  color: var(--fg);
+}
+
+.update-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.update-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.update-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.update-progress-text {
+  font-size: 11px;
+  color: var(--muted);
+  min-width: 30px;
+  text-align: right;
+}
+
+.update-ready .update-icon {
+  color: var(--green);
+}

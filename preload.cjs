@@ -19,13 +19,26 @@ contextBridge.exposeInMainWorld('api', {
   // Notification methods
   getNotificationSettings: () => ipcRenderer.invoke('notifications:getSettings'),
   updateNotificationSettings: (settings) => ipcRenderer.invoke('notifications:updateSettings', settings),
-  testNotification: () => ipcRenderer.invoke('notifications:testAlert')
+  testNotification: () => ipcRenderer.invoke('notifications:testAlert'),
+  // Update methods
+  checkForUpdates: () => ipcRenderer.invoke('update:checkForUpdates'),
+  downloadAndInstall: () => ipcRenderer.invoke('update:downloadAndInstall')
 });
 
-// Expose auth state change listener
+// Expose auth state change listener and update events
 contextBridge.exposeInMainWorld('electronAPI', {
   onAuthStateChanged: (callback) => {
     ipcRenderer.on('auth-state-changed', (_event, user) => callback(user));
+  },
+  // Update event listeners
+  onUpdateAvailable: (callback) => {
+    ipcRenderer.on('update-available', (_event, info) => callback(info));
+  },
+  onUpdateProgress: (callback) => {
+    ipcRenderer.on('update-progress', (_event, progress) => callback(progress));
+  },
+  onUpdateDownloaded: (callback) => {
+    ipcRenderer.on('update-downloaded', (_event, info) => callback(info));
   }
 });
 

@@ -94,8 +94,56 @@ firebase deploy
 
 ### Electron App Distribution
 ```bash
-npm run dist  # Creates installer in dist/ folder
+npm run dist     # Creates installer in dist/ folder
+npm run publish  # Build and publish to GitHub releases (enables auto-updates)
 ```
+
+#### Auto-Update Setup
+To enable auto-updates for your distributed app:
+
+1. **Create GitHub Release**:
+   ```bash
+   # First, create a new version and tag
+   git tag v1.0.0
+   git push origin v1.0.0
+   
+   # Then build and publish
+   npm run publish
+   ```
+
+2. **GitHub Token Setup** (for publishing):
+   - Go to GitHub → Settings → Developer settings → Personal access tokens
+   - Create token with `repo` permissions
+   - Set environment variable: `GH_TOKEN=your_token_here`
+
+3. **Auto-Update Features**:
+   - ✅ Automatic update checking on app startup
+   - ✅ User-friendly update notifications
+   - ✅ Download progress indicators
+   - ✅ One-click install and restart
+   - ✅ Seamless upgrades without uninstalling
+
+#### How Auto-Updates Work
+
+1. **Automatic Checking**: The app checks for updates 5 seconds after startup
+2. **User Notification**: When an update is available, a notification appears in the top-right
+3. **Background Download**: Users can download updates in the background with progress indication
+4. **One-Click Install**: After download, users can restart to install with a single click
+5. **No Uninstall Required**: Updates are applied over the existing installation
+
+#### Publishing New Versions
+
+```bash
+# Increment version and publish
+npm run version:patch  # For bug fixes (1.0.0 → 1.0.1)
+npm run version:minor  # For new features (1.0.0 → 1.1.0)  
+npm run version:major  # For breaking changes (1.0.0 → 2.0.0)
+
+# Build and publish to GitHub releases
+npm run publish
+```
+
+**Important**: Make sure to set the `GH_TOKEN` environment variable before publishing.
 
 ## 🔒 Security Notes
 

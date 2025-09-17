@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, nativeTheme, dialog, Notification } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('node:path');
 const fs = require('node:fs').promises;
 const crypto = require('node:crypto');
@@ -487,6 +488,51 @@ function stopAlertTimer() {
 	}
 }
 
+// Auto-updater configuration
+function setupAutoUpdater() {
+	// Configure auto-updater
+	autoUpdater.logger = console;
+	autoUpdater.logger.transports.file.level = 'info';
+	
+	// Auto-updater events
+	autoUpdater.on('checking-for-update', () => {
+		console.log('Checking for update...');
+	});
+
+	autoUpdater.on('update-available', (info) => {
+		console.log('Update available.');
+		if (win) {
+			win.webContents.send('update-available', info);
+		}
+	});
+
+	autoUpdater.on('update-not-available', (info) => {
+		console.log('Update not available.');
+	});
+
+	autoUpdater.on('error', (err) => {
+		console.log('Error in auto-updater: ' + err);
+	});
+
+	autoUpdater.on('download-progress', (progressObj) => {
+		let log_message = `Download speed: ${progressObj.bytesPerSecond}`;
+		log_message = `${log_message} - Downloaded ${progressObj.percent}%`;
+		log_message = `${log_message} (${progressObj.transferred}/${progressObj.total})`;
+		console.log(log_message);
+		
+		if (win) {
+			win.webContents.send('update-progress', progressObj);
+		}
+	});
+
+	autoUpdater.on('update-downloaded', (info) => {
+		console.log('Update downloaded');
+		if (win) {
+			win.webContents.send('update-downloaded', info);
+		}
+	});
+}
+
 async function createWindow() {
 	const saved = await readBounds();
 	win = new BrowserWindow({
@@ -551,6 +597,16 @@ app.whenReady().then(async () => {
 	} catch {}
 
 	await createWindow();
+	
+	// Setup auto-updater
+	setupAutoUpdater();
+	
+	// Check for updates after a delay (only in production)
+	if (!isDev) {
+		setTimeout(() => {
+			autoUpdater.checkForUpdatesAndNotify();
+		}, 5000); // Check 5 seconds after startup
+	}
 	
 	// Load notification settings and start alert system
 	notificationSettings = await readNotificationSettings();
@@ -829,6 +885,28 @@ ipcMain.handle('notifications:testAlert', async () => {
 	};
 	
 	showTaskAlert(testTask, 0);
+	return { ok: true };
+});
+
+// Auto-updater IPC handlers
+ipcMain.handle('update:checkForUpdates', async () => {
+	if (isDev) {
+		return { message: 'Updates not available in development mode' };
+	}
+	try {
+		const result = await autoUpdater.checkForUpdates();
+		return { updateInfo: result?.updateInfo || null };
+	} catch (error) {
+		console.error('Check for updates error:', error);
+		return { error: error.message };
+	}
+});
+
+ipcMain.handle('update:downloadAndInstall', () => {
+	if (isDev) {
+		return { message: 'Updates not available in development mode' };
+	}
+	autoUpdater.quitAndInstall(false, true);
 	return { ok: true };
 });
 
