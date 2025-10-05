@@ -16,33 +16,54 @@
 - 🎯 **Always on Top** - Desktop app stays visible while you work
 - 🖱️ **Drag & Drop** - Reorder tasks easily
 - 🚀 **Lightning Fast** - Minimalist design focused on speed
+- ⚡ **Tauri-Powered** - Smaller, faster desktop app with Rust backend
 
 ## 🚀 Quick Start
 
-### 1. Clone & Install
+### Desktop App (Tauri - Recommended)
+
 ```bash
-git clone https://github.com/yourusername/upnext.git
-cd upnext
+# Clone and install
+git clone https://github.com/Abhishekingle662/UpNext.git
+cd UpNext
 npm install
+
+# Run with Tauri
+npm run tauri:dev
+
+# Build for production
+npm run tauri:build
 ```
 
-### 2. Firebase Setup
-```bash
-# Copy configuration templates
-cp firebase-config.template.js firebase-config.js
-cp web/firebase-config.template.js web/firebase-config.js
+### Desktop App (Electron - Legacy)
 
-# Follow SETUP_INSTRUCTIONS.md for detailed Firebase configuration
-```
-
-### 3. Run the Apps
 ```bash
-# Desktop app
+# Clone and install
+git clone https://github.com/Abhishekingle662/UpNext.git
+cd UpNext
+npm install
+
+# Run with Electron
 npm run dev
 
-# Web app (in another terminal)
+# Build for production
+npm run dist
+```
+
+### Web App
+
+```bash
+# Install and serve
+npm install
 npm run serve-web
 ```
+
+## 📖 Documentation
+
+- **[Tauri Quick Start Guide](TAURI_QUICKSTART.md)** - Get started with Tauri in 5 minutes
+- **[Tauri Migration Guide](TAURI_MIGRATION.md)** - Detailed migration information
+- **[Firebase Setup](FIREBASE_SETUP.md)** - Configure cross-platform sync
+- **[Setup Instructions](SETUP_INSTRUCTIONS.md)** - Complete setup guide
 
 ## 📱 Platform Support
 
