@@ -27,13 +27,18 @@
     "release:minor": "npm version minor && git push origin main --tags && npm run publish",
     "release:major": "npm version major && git push origin main --tags && npm run publish",
     "serve-web": "node serve-web.js",
-    "setup": "node setup.js"
+    "setup": "node setup.js",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@tauri-apps/api": "^1.6.0",
     "electron-updater": "^6.6.2",
     "firebase": "^10.7.1"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^1.6.3",
     "electron": "^31.3.0",
     "electron-builder": "^24.13.3",
     "electronmon": "^2.0.2",

@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googleusercontent.com https://*.googleapis.com; connect-src 'self' https://*.googleapis.com https://*.google.com wss://*.firebaseio.com https://*.firebaseio.com; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://identitytoolkit.googleapis.com" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>UpNext</title>
 <link rel="stylesheet" href="./styles.css" />
@@ -108,6 +108,8 @@
   </div>
 </div>
 
+<!-- Load Tauri preload before renderer -->
+<script type="module" src="../tauri-preload.js"></script>
 <script src="./renderer.js" defer></script>
 </body>
 </html>
