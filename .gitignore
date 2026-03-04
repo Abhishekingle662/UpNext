@@ -1,45 +1,37 @@
-# Node/Electron
+# Dependencies
 node_modules/
+
+# Firebase config (contains secrets — never commit)
+firebase-config.js
+web/firebase-config.js
+
+# Build outputs
 dist/
 out/
 build/
 coverage/
+src-tauri/target/
+
+# Tauri generated
+src-tauri/WixTools/
+
+# Logs & temp
 *.log
 *.pid
-.DS_Store
-Thumbs.db
-
-# Electron / platform binaries
-/node_modules/electron/
-*.exe
-*.dmg
-*.AppImage
-*.asar
-
-# Env and editor
-.env*
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Firebase config files (contain sensitive API keys)
-firebase-config.js
-web/firebase-config.js
-firestore-rules-fix.txt
-
-# Temporary files and local development
 *.tmp
 .cache/
 .firebase/
 
-# OS junk
+# OS & editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
 *.orig
 *.tgz
 
-# Distribution files (keep scripts, ignore generated files)
-dist/*.zip
-dist/*.exe
-dist/*.blockmap
-dist/release-info.json
-dist2/
+# Env / secrets
+.env
+.env.*
