@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use tauri::{Manager, State, Window};
 
 // Data structures
@@ -55,6 +56,7 @@ struct WindowBounds {
 // App state
 struct AppState {
     app_data_dir: PathBuf,
+    is_pinned: Mutex<bool>,
 }
 
 impl AppState {
@@ -270,20 +272,17 @@ async fn clear_completed(state: State<'_, AppState>) -> Result<(), String> {
 
 // Window management commands
 #[tauri::command]
-async fn toggle_pin(window: Window) -> Result<bool, String> {
-    let is_pinned = window.is_always_on_top()
-        .map_err(|e| format!("Failed to get pin state: {}", e))?;
-    
-    window.set_always_on_top(!is_pinned)
+async fn toggle_pin(window: Window, state: State<'_, AppState>) -> Result<bool, String> {
+    let mut is_pinned = state.is_pinned.lock().unwrap();
+    *is_pinned = !*is_pinned;
+    window.set_always_on_top(*is_pinned)
         .map_err(|e| format!("Failed to set pin state: {}", e))?;
-    
-    Ok(!is_pinned)
+    Ok(*is_pinned)
 }
 
 #[tauri::command]
-async fn get_pin(window: Window) -> Result<bool, String> {
-    window.is_always_on_top()
-        .map_err(|e| format!("Failed to get pin state: {}", e))
+async fn get_pin(state: State<'_, AppState>) -> Result<bool, String> {
+    Ok(*state.is_pinned.lock().unwrap())
 }
 
 #[tauri::command]
@@ -311,14 +310,12 @@ async fn update_notification_settings(settings: NotificationSettings, state: Sta
 
 #[tauri::command]
 async fn test_notification(app_handle: tauri::AppHandle) -> Result<(), String> {
-    app_handle
-        .notification()
-        .builder()
+    let identifier = app_handle.config().tauri.bundle.identifier.clone();
+    tauri::api::notification::Notification::new(&identifier)
         .title("UpNext")
-        .body("Test notification - notifications are working! 🎉")
+        .body("Test notification - notifications are working!")
         .show()
         .map_err(|e| format!("Failed to show notification: {}", e))?;
-    
     Ok(())
 }
 
@@ -335,7 +332,7 @@ fn main() {
                 .expect("Failed to create app data directory");
             
             // Initialize app state
-            app.manage(AppState { app_data_dir });
+            app.manage(AppState { app_data_dir, is_pinned: Mutex::new(false) });
             
             Ok(())
         })
