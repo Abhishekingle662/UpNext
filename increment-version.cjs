@@ -1,17 +1,12 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
-const path = require('path');
 
 // Read package.json
-const packageJsonPath = 'package.json';
-const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-
-// Parse current version
+const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const currentVersion = packageJson.version;
 const versionParts = currentVersion.split('.').map(Number);
 
-// Get increment type from command line argument
 const incrementType = process.argv[2] || 'patch';
 
 let newVersion;
@@ -30,25 +25,26 @@ switch (incrementType) {
 
 // Update package.json
 packageJson.version = newVersion;
-fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
+fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2) + '\n');
+console.log(`Updated package.json: ${currentVersion} → ${newVersion}`);
 
-console.log(`🔼 Version incremented: ${currentVersion} → ${newVersion}`);
-console.log(`📝 Updated ${packageJsonPath}`);
+// Update src-tauri/tauri.conf.json
+const tauriConfPath = 'src-tauri/tauri.conf.json';
+if (fs.existsSync(tauriConfPath)) {
+    const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf8'));
+    tauriConf.package = tauriConf.package || {};
+    tauriConf.package.version = newVersion;
+    fs.writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n');
+    console.log(`Updated ${tauriConfPath}`);
+}
 
-// Update any version info files if they exist
-const versionFiles = [
-    'src/version.js',
-    'renderer/version.js',
-    'version.txt'
-];
+// Update src-tauri/Cargo.toml
+const cargoPath = 'src-tauri/Cargo.toml';
+if (fs.existsSync(cargoPath)) {
+    let cargo = fs.readFileSync(cargoPath, 'utf8');
+    cargo = cargo.replace(/^version = "[\d.]+"$/m, `version = "${newVersion}"`);
+    fs.writeFileSync(cargoPath, cargo);
+    console.log(`Updated ${cargoPath}`);
+}
 
-versionFiles.forEach(file => {
-    if (fs.existsSync(file)) {
-        let content = fs.readFileSync(file, 'utf8');
-        content = content.replace(/version.*?['"`][\d.]+['"`]/gi, `version: '${newVersion}'`);
-        fs.writeFileSync(file, content);
-        console.log(`📝 Updated ${file}`);
-    }
-});
-
-console.log('✅ Version increment complete!');
+console.log(`Version bumped to ${newVersion}`);

@@ -349,23 +349,14 @@ signInBtn?.addEventListener('click', async () => {
 	try {
 		const result = await window.api.signInWithGoogle();
 		if (result.success) {
-			updateUserUI(result.user, false); // Hide sign-in button after successful sign-in
-			// Reload tasks after sign-in
+			updateUserUI(result.user, false);
 			tasks = await window.api.loadTasks();
 			sortInPlace(tasks);
 			render();
 		}
 	} catch (error) {
 		console.error('Sign in failed:', error);
-		
-		// Show user-friendly message
-		if (error.message && error.message.includes('Google sign-in opened in your web browser')) {
-			alert('Google sign-in opened in your web browser!\n\n' +
-			      'Please sign in at the web app for your personal tasks.\n' +
-			      'The desktop app works great in development mode for quick task management.');
-		} else {
-			alert('Sign in failed. Please try again or use the web app at https://upnext-97a2a.web.app');
-		}
+		alert('Sign in failed. Please try again or use the web app at https://upnext-97a2a.web.app');
 	}
 });
 
@@ -403,35 +394,6 @@ function updateUserUI(user, showSignInButton = true) {
 	}
 }
 
-// Listen for authentication state changes from main process
-window.addEventListener('DOMContentLoaded', () => {
-	// Set up IPC listener for auth state changes
-	console.log('Setting up auth state change listener...');
-	console.log('electronAPI available:', !!window.electronAPI);
-	console.log('onAuthStateChanged available:', !!(window.electronAPI && window.electronAPI.onAuthStateChanged));
-	
-	if (window.electronAPI && window.electronAPI.onAuthStateChanged) {
-		console.log('Registering auth state change listener');
-		window.electronAPI.onAuthStateChanged((user) => {
-			console.log('🎉 Auth state changed in renderer:', user);
-			if (user) {
-				console.log('✅ User signed in, updating UI and loading tasks');
-				updateUserUI(user, false);
-				// Reload tasks when user signs in
-				loadAndRenderTasks();
-			} else {
-				console.log('❌ User signed out, clearing tasks');
-				updateUserUI(null, true);
-				tasks = [];
-				render();
-			}
-		});
-		console.log('Auth state change listener registered successfully');
-	} else {
-		console.error('❌ electronAPI or onAuthStateChanged not available');
-	}
-});
-
 async function loadAndRenderTasks() {
 	try {
 		console.log('🔄 Loading tasks from API...');
@@ -444,142 +406,6 @@ async function loadAndRenderTasks() {
 		console.error('❌ Failed to load tasks:', error);
 	}
 }
-
-// Update Manager
-class UpdateManager {
-	constructor() {
-		this.updateNotification = null;
-		this.setupUpdateListeners();
-	}
-
-	setupUpdateListeners() {
-		// Listen for update events from main process
-		window.electronAPI?.onUpdateAvailable?.((info) => {
-			this.showUpdateAvailable(info);
-		});
-
-		window.electronAPI?.onUpdateProgress?.((progress) => {
-			this.showUpdateProgress(progress);
-		});
-
-		window.electronAPI?.onUpdateDownloaded?.((info) => {
-			this.showUpdateReady(info);
-		});
-	}
-
-	showUpdateAvailable(info) {
-		this.hideUpdateNotification();
-		
-		const notification = document.createElement('div');
-		notification.className = 'update-notification update-available';
-		notification.innerHTML = `
-			<div class="update-content">
-				<div class="update-icon">🔄</div>
-				<div class="update-text">
-					<div class="update-title">Update Available</div>
-					<div class="update-message">Version ${info?.version || 'newer'} is ready to download</div>
-				</div>
-				<div class="update-actions">
-					<button class="update-btn update-btn-secondary" onclick="updateManager.hideUpdateNotification()">Later</button>
-					<button class="update-btn update-btn-primary" onclick="updateManager.downloadUpdate()">Download</button>
-				</div>
-			</div>
-		`;
-		
-		document.body.appendChild(notification);
-		this.updateNotification = notification;
-		
-		// Auto-hide after 10 seconds
-		setTimeout(() => {
-			if (this.updateNotification === notification) {
-				this.hideUpdateNotification();
-			}
-		}, 10000);
-	}
-
-	showUpdateProgress(progress) {
-		if (!this.updateNotification || !this.updateNotification.classList.contains('update-available')) {
-			return;
-		}
-		
-		const actionsEl = this.updateNotification.querySelector('.update-actions');
-		if (actionsEl) {
-			actionsEl.innerHTML = `
-				<div class="update-progress">
-					<div class="update-progress-bar">
-						<div class="update-progress-fill" style="width: ${progress.percent}%"></div>
-					</div>
-					<div class="update-progress-text">${Math.round(progress.percent)}%</div>
-				</div>
-			`;
-		}
-	}
-
-	showUpdateReady(info) {
-		this.hideUpdateNotification();
-		
-		const notification = document.createElement('div');
-		notification.className = 'update-notification update-ready';
-		notification.innerHTML = `
-			<div class="update-content">
-				<div class="update-icon">✅</div>
-				<div class="update-text">
-					<div class="update-title">Update Ready</div>
-					<div class="update-message">Restart to install version ${info?.version || 'newer'}</div>
-				</div>
-				<div class="update-actions">
-					<button class="update-btn update-btn-secondary" onclick="updateManager.hideUpdateNotification()">Later</button>
-					<button class="update-btn update-btn-primary" onclick="updateManager.installUpdate()">Restart Now</button>
-				</div>
-			</div>
-		`;
-		
-		document.body.appendChild(notification);
-		this.updateNotification = notification;
-	}
-
-	async downloadUpdate() {
-		// Update button text to show it's downloading
-		const btn = this.updateNotification?.querySelector('.update-btn-primary');
-		if (btn) {
-			btn.textContent = 'Downloading...';
-			btn.disabled = true;
-		}
-		// The download will start automatically when update is available
-	}
-
-	async installUpdate() {
-		try {
-			await window.api.downloadAndInstall();
-		} catch (error) {
-			console.error('Failed to install update:', error);
-		}
-	}
-
-	async checkForUpdates() {
-		try {
-			const result = await window.api.checkForUpdates();
-			if (result.error) {
-				console.error('Update check failed:', result.error);
-			} else if (result.message) {
-				console.log(result.message);
-			}
-			return result;
-		} catch (error) {
-			console.error('Failed to check for updates:', error);
-		}
-	}
-
-	hideUpdateNotification() {
-		if (this.updateNotification) {
-			this.updateNotification.remove();
-			this.updateNotification = null;
-		}
-	}
-}
-
-// Initialize update manager
-const updateManager = new UpdateManager();
 
 // Init
 (async function init() {

@@ -3,7 +3,6 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "main": "main.cjs",
   "description": "An always-on-top, minimalist to-do app that keeps tasks visible so you capture and finish work faster.",
   "author": "Abhishek Ingle (Abhishekingle662)",
   "license": "MIT",
@@ -13,76 +12,24 @@
   },
   "homepage": "https://github.com/Abhishekingle662/UpNext",
   "scripts": {
-    "start": "electron .",
-    "dev": "electronmon .",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder",
-    "publish": "electron-builder --publish=always",
-    "zip-dist": "npm run pack && node create-zip-dist.cjs",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "serve-web": "node serve-web.js",
+    "setup": "node setup.js",
     "version:patch": "node increment-version.cjs patch",
     "version:minor": "node increment-version.cjs minor",
     "version:major": "node increment-version.cjs major",
-    "release": "npm run version:patch && npm run zip-dist",
-    "release:patch": "npm version patch && git push origin main --tags && npm run publish",
-    "release:minor": "npm version minor && git push origin main --tags && npm run publish",
-    "release:major": "npm version major && git push origin main --tags && npm run publish",
-    "serve-web": "node serve-web.js",
-    "setup": "node setup.js",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "release:patch": "node increment-version.cjs patch && git add -A && git commit -m \"chore: bump to patch version\" && git push origin main --tags",
+    "release:minor": "node increment-version.cjs minor && git add -A && git commit -m \"chore: bump to minor version\" && git push origin main --tags",
+    "release:major": "node increment-version.cjs major && git add -A && git commit -m \"chore: bump to major version\" && git push origin main --tags"
   },
   "dependencies": {
     "@tauri-apps/api": "^1.6.0",
-    "electron-updater": "^6.6.2",
     "firebase": "^10.7.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^1.6.3",
-    "electron": "^31.3.0",
-    "electron-builder": "^24.13.3",
-    "electronmon": "^2.0.2",
     "sharp": "^0.34.3"
-  },
-  "build": {
-    "appId": "com.abhi.upnext",
-    "productName": "UpNext",
-    "asar": true,
-    "files": [
-      "main.cjs",
-      "firebase-main.cjs",
-      "preload.cjs",
-      "renderer/**/*",
-      "package.json",
-      "assets/**"
-    ],
-    "publish": {
-      "provider": "github",
-      "owner": "Abhishekingle662",
-      "repo": "UpNext"
-    },
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "artifactName": "${productName}-Setup-${version}.${ext}",
-      "icon": "assets/icon.ico",
-      "publisherName": [
-        "Abhishek Ingle"
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "UpNext"
-    }
   }
 }
