@@ -1,54 +1,40 @@
 #!/usr/bin/env node
-
+// Bumps version in package.json, src-tauri/tauri.conf.json, and src-tauri/Cargo.toml.
+// Usage: node increment-version.cjs [patch|minor|major]
+'use strict';
 const fs = require('fs');
-const path = require('path');
 
-// Read package.json
-const packageJsonPath = 'package.json';
-const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+const type = process.argv[2] || 'patch';
 
-// Parse current version
-const currentVersion = packageJson.version;
-const versionParts = currentVersion.split('.').map(Number);
+// ── package.json ──────────────────────────────────────────────────────────
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const [major, minor, patch] = pkg.version.split('.').map(Number);
+const next =
+  type === 'major' ? `${major + 1}.0.0` :
+  type === 'minor' ? `${major}.${minor + 1}.0` :
+                     `${major}.${minor}.${patch + 1}`;
 
-// Get increment type from command line argument
-const incrementType = process.argv[2] || 'patch';
+pkg.version = next;
+fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+console.log(`package.json          → ${next}`);
 
-let newVersion;
-switch (incrementType) {
-    case 'major':
-        newVersion = `${versionParts[0] + 1}.0.0`;
-        break;
-    case 'minor':
-        newVersion = `${versionParts[0]}.${versionParts[1] + 1}.0`;
-        break;
-    case 'patch':
-    default:
-        newVersion = `${versionParts[0]}.${versionParts[1]}.${versionParts[2] + 1}`;
-        break;
+// ── src-tauri/tauri.conf.json ─────────────────────────────────────────────
+const confPath = 'src-tauri/tauri.conf.json';
+if (fs.existsSync(confPath)) {
+  const conf = JSON.parse(fs.readFileSync(confPath, 'utf8'));
+  conf.package = conf.package || {};
+  conf.package.version = next;
+  fs.writeFileSync(confPath, JSON.stringify(conf, null, 2) + '\n');
+  console.log(`tauri.conf.json       → ${next}`);
 }
 
-// Update package.json
-packageJson.version = newVersion;
-fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
+// ── src-tauri/Cargo.toml ──────────────────────────────────────────────────
+const cargoPath = 'src-tauri/Cargo.toml';
+if (fs.existsSync(cargoPath)) {
+  const cargo = fs.readFileSync(cargoPath, 'utf8')
+    .replace(/^version = "[\d.]+"$/m, `version = "${next}"`);
+  fs.writeFileSync(cargoPath, cargo);
+  console.log(`Cargo.toml            → ${next}`);
+}
 
-console.log(`🔼 Version incremented: ${currentVersion} → ${newVersion}`);
-console.log(`📝 Updated ${packageJsonPath}`);
-
-// Update any version info files if they exist
-const versionFiles = [
-    'src/version.js',
-    'renderer/version.js',
-    'version.txt'
-];
-
-versionFiles.forEach(file => {
-    if (fs.existsSync(file)) {
-        let content = fs.readFileSync(file, 'utf8');
-        content = content.replace(/version.*?['"`][\d.]+['"`]/gi, `version: '${newVersion}'`);
-        fs.writeFileSync(file, content);
-        console.log(`📝 Updated ${file}`);
-    }
-});
-
-console.log('✅ Version increment complete!');
+console.log(`\nVersion bumped: ${pkg.version.replace(next, '')}${next}`);

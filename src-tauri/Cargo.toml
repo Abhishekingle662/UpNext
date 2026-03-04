@@ -1,6 +1,6 @@
 [package]
 name = "upnext"
-version = "0.2.0"
+version = "0.1.0"
 description = "An always-on-top, minimalist to-do app that keeps tasks visible so you capture and finish work faster."
 authors = ["Abhishek Ingle <Abhishekingle662>"]
 license = "MIT"
