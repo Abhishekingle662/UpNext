@@ -1,20 +1,16 @@
 # CLAUDE.md — UpNext Codebase Guide
 
-> This file is intended for AI assistants (Claude, Copilot, etc.) to understand the codebase structure, conventions, and workflows before making changes.
+> This file is for AI assistants. Read it before making any changes.
 
 ---
 
 ## Project Overview
 
-**UpNext** is a cross-platform task management application (v0.2.0) that runs as:
-- A **desktop app** — implemented in **Tauri** (Rust + WebView, preferred and only desktop target)
-- A **web app / PWA** — Firebase-hosted at https://upnext-97a2a.web.app
+**UpNext** is a minimalist, always-on-top task manager (v0.1.0):
+- **Desktop:** Tauri v1 (Rust backend + WebView, Windows/macOS/Linux)
+- **Web / PWA:** Firebase-hosted at https://upnext-97a2a.web.app
 
-**Author:** Abhishek Ingle
-**License:** MIT
-**Tech:** Vanilla JavaScript (no framework), Rust (Tauri backend), Firebase (cloud sync)
-
-> **Note:** The legacy Electron implementation has been removed. Tauri is the sole desktop framework.
+**Author:** Abhishek Ingle | **License:** MIT | **Stack:** Vanilla JS, Rust, Firebase
 
 ---
 
@@ -22,224 +18,180 @@
 
 ```
 UpNext/
-├── tauri-preload.js           # Tauri API bridge (exposes window.api to renderer)
-├── serve-web.js               # Simple HTTP server for local web testing
-├── setup.js                   # Initial setup script (copies firebase-config template)
-├── increment-version.cjs      # Version bumping — updates package.json, tauri.conf.json, Cargo.toml
+├── tauri-preload.js           # Tauri IPC bridge → window.api
+├── serve-web.js               # Local HTTP server for web dev (port 3000)
+├── setup.js                   # One-time setup: copies firebase-config template
+├── increment-version.cjs      # Version bumper (package.json + tauri.conf.json + Cargo.toml)
 │
-├── renderer/                  # Desktop UI (loaded by Tauri WebView)
-│   ├── index.html             # HTML structure — loads tauri-preload.js + renderer.js
-│   ├── renderer.js            # UI logic (~500 lines)
-│   └── styles.css             # Desktop styles + CSS variables for theming
+├── renderer/                  # Tauri desktop UI (loaded by WebView)
+│   ├── index.html             # HTML shell — loads tauri-preload.js + renderer.js
+│   ├── renderer.js            # All UI logic: tasks, drag-drop, theme, settings
+│   └── styles.css             # CSS variables + component styles
 │
-├── web/                       # Web app / PWA
-│   ├── index.html             # HTML with PWA meta tags + import map
-│   ├── web-app.js             # Main web app class (~800 lines)
-│   ├── web-styles.css         # Web-specific styles
-│   ├── sw.js                  # Service worker (cache-first strategy)
+├── web/                       # Web app / PWA (Firebase-hosted)
+│   ├── index.html             # HTML with PWA meta + Firebase import map
+│   ├── web-app.js             # Firebase auth + Firestore sync + full UI
+│   ├── web-styles.css         # Web-specific styles (mirrors desktop design)
+│   ├── sw.js                  # Service worker — cache-first offline support
 │   ├── manifest.json          # PWA manifest
-│   └── firebase-config.js     # Firebase SDK config (NOT in git — see .gitignore)
+│   └── firebase-config.js     # NOT in git — copy from firebase-config.template.js
 │
-├── src-tauri/                 # Tauri Rust backend
-│   ├── src/main.rs            # Rust entry point with all IPC command handlers
-│   ├── Cargo.toml             # Rust dependencies
-│   └── tauri.conf.json        # Tauri app configuration
+├── src-tauri/
+│   ├── src/main.rs            # Rust: all IPC handlers, smart parsing, file I/O
+│   ├── Cargo.toml             # Rust deps: tauri 1.8, serde, chrono
+│   ├── tauri.conf.json        # Window config, allowlist, bundle settings
+│   └── build.rs               # Required by tauri-build
 │
-├── assets/                    # App icons (.ico, .png, .icns)
-├── .github/workflows/
-│   └── tauri-build.yml        # CI/CD: builds for Win/macOS/Linux on push/tag
-│
-└── *.md                       # Documentation files
+├── assets/                    # App icons (ico, png, icns)
+└── .github/workflows/
+    └── tauri-build.yml        # CI/CD: Win/macOS/Linux builds on push/tag
 ```
 
 ---
 
 ## Technology Stack
 
-| Layer | Desktop (Tauri) | Web |
-|-------|----------------|-----|
-| UI | `renderer/renderer.js` | `web/web-app.js` |
-| Backend | `src-tauri/src/main.rs` (Rust) | Firebase SDK |
-| API bridge | `tauri-preload.js` | N/A |
+| Layer | Desktop | Web |
+|-------|---------|-----|
+| UI logic | `renderer/renderer.js` | `web/web-app.js` |
+| Backend | `src-tauri/src/main.rs` (Rust) | Firebase SDK (JS) |
+| IPC bridge | `tauri-preload.js` → `window.api` | N/A |
 | Storage | `tasks.json` in `$APPDATA/` | Firestore + IndexedDB |
-| Auth | Firebase SDK (via browser OAuth) | Firebase Auth (browser) |
+| Auth | Stub (directs to web app) | Google OAuth via Firebase |
 | Sync | Firebase Firestore | Firebase Firestore |
 
-**Key versions:**
-- Node: 18+
-- Tauri: v1.8.1 (Rust edition 2021, rust-version 1.60)
-- Firebase SDK: v10.7.1 (modular)
+**Key versions:** Node 18+, Tauri 1.8.1, Firebase SDK 10.7.1
 
 ---
 
 ## Development Commands
 
 ```bash
-# Install dependencies
-npm install
+npm install            # Install dependencies
 
-# --- Development ---
-npm run tauri:dev      # Tauri desktop app with hot reload
+npm run tauri:dev      # Desktop app with hot reload
 npm run serve-web      # Web app at http://localhost:3000
+npm run tauri:build    # Build installers → src-tauri/target/release/bundle/
 
-# --- Building ---
-npm run tauri:build    # Build Tauri installers → src-tauri/target/release/bundle/
+npm run setup          # Copy web/firebase-config template (run once)
 
-# --- Releases ---
-npm run release:patch  # Bump patch version, commit, and push (0.2.0 → 0.2.1)
-npm run release:minor  # Bump minor version (0.2.0 → 0.3.0)
-npm run release:major  # Bump major version (0.2.0 → 1.0.0)
-
-# --- Utilities ---
-npm run setup          # Copy firebase-config template for web app
+npm run release:patch  # Bump version, commit, push (0.1.0 → 0.1.1)
+npm run release:minor  # 0.1.0 → 0.2.0
+npm run release:major  # 0.1.0 → 1.0.0
 ```
 
-**No automated test suite exists.** Testing is manual; see `TESTING_GUIDE.md`.
+No automated tests — see manual testing checklist in `TESTING_GUIDE.md` (if present).
 
 ---
 
 ## Key Conventions
 
-### File Extensions
-- `.cjs` — CommonJS modules (Node utility scripts like `increment-version.cjs`). **Never use `import` here.**
-- `.js` — ES Modules (`"type": "module"` in package.json). **Use `import`/`export`.**
-- `.rs` — Rust (Tauri backend only)
+### File extensions
+- `.cjs` — CommonJS (Node scripts like `increment-version.cjs`). Use `require()`.
+- `.js`  — ES Modules (`"type": "module"` in package.json). Use `import/export`.
+- `.rs`  — Rust (Tauri backend only).
 
-### JavaScript Style
-- **No framework** — vanilla ES6+ DOM APIs throughout
-- **No bundler** — scripts are loaded directly; browser compatibility matters
-- DOM helper: `const $ = (sel, root=document) => root.querySelector(sel);`
-- Async/await with `try/catch` for all IPC calls
-- IPC results return `{ok: true/false, ...data}` shape — always check `res.ok`
+### JavaScript style
+- **No framework.** Vanilla ES6+ throughout.
+- **No bundler.** Scripts load directly from disk.
+- DOM helper: `const $ = (sel) => document.querySelector(sel)`
+- `async/await` with `try/catch` for all IPC calls.
 
 ### Naming
-- JavaScript: `camelCase` for variables and functions
-- Rust: `snake_case` for functions and fields
-- Prefix functions with verbs: `getTask`, `loadTasks`, `togglePin`, `savePrefs`
-- DOM data attributes: `data-role="title"`, `data-role="edit"`, `data-id="<taskId>"`
-- Template IDs: `#itemTpl`, `#settingsModal`
+- JS: `camelCase` for functions and variables.
+- Rust: `snake_case` for functions and fields.
+- Prefix functions with verbs: `loadTasks`, `createTask`, `togglePin`, `applyTheme`.
+- DOM data attributes: `data-role="title"`, `data-role="check"`, `data-id="<taskId>"`.
 
-### Task Data Shape
+---
+
+## Task Data Shape
 
 ```typescript
-// Shared across Tauri and Web
 interface Task {
-  id: string;          // UUID or Firestore doc ID
-  title: string;
+  id:        string;   // "t<timestamp>" (desktop) or Firestore doc ID (web)
+  title:     string;
   completed: boolean;
-  createdAt: number;   // Unix timestamp (ms)
-  updatedAt: number;
-  dueAt?: number;      // Parsed from natural language in title
-  priority?: number;   // 0 (none), 1 (low), 2 (medium), 3 (high)
-  order?: number;      // For drag-and-drop reordering
+  createdAt: number;   // Unix ms
+  updatedAt: number;   // Unix ms
+  dueAt?:    number;   // Unix ms — parsed from natural language
+  priority?: number;   // 1=low, 2=medium, 3=high — parsed from markers
+  order?:    number;   // drag-drop sort index
 }
 ```
 
-### Smart Parsing (built into main.rs)
+---
 
-**Priority** is stripped from the task title and stored separately:
+## Smart Parsing
+
+Both `src-tauri/src/main.rs` (Rust) and `web/web-app.js` (JS) implement the same logic:
+
+**Priority** — stripped from the title:
 ```
-"!!!" or "p1" or "urgent"/"high"/"critical"  → priority 3
-"!!"  or "p2" or "medium"/"normal"            → priority 2
-"!"   or "p3" or "low"/"minor"                → priority 1
+!!!        → priority 3 (high)
+!!         → priority 2 (medium)
+!          → priority 1 (low)
+p1/p2/p3   → maps to 3/2/1
+urgent/asap/critical → 3  |  medium/normal → 2  |  low/minor → 1
 ```
 
-**Due dates** are parsed from natural language at task creation:
+**Due date** — stripped from the title:
 ```
-"tomorrow 3pm"     → next day at 15:00
-"next monday"      → following Monday
-"in 2 days"        → 48 hours from now
-"2024-12-25 14:30" → explicit datetime
+tomorrow [time]    → next day at 09:00 (or specified time)
+today [time]       → today at current/specified time
+next monday        → next Monday at 09:00
+this friday        → this Friday at 09:00
+in 2 days          → 48 hours from now
+in 3 hours         → 3 hours from now
+2025-12-25         → Dec 25 at 09:00
+2025-12-25 14:30   → Dec 25 at 14:30
 ```
 
 ---
 
-## Desktop API Surface (window.api)
+## Desktop API Surface (`window.api`)
 
-`tauri-preload.js` exposes `window.api` to `renderer.js` via Tauri's `invoke()` system.
+Defined in `tauri-preload.js`, backed by `#[tauri::command]` functions in `main.rs`:
 
 ```javascript
-// Task CRUD
-await window.api.loadTasks()                    // → Task[]
-await window.api.createTask(title)              // → {ok, task}
-await window.api.updateTask(id, patch)          // → {ok, task}
-await window.api.deleteTask(id)                 // → {ok}
-await window.api.clearCompleted()               // → void
+// Tasks
+window.api.loadTasks()                    // → Task[]
+window.api.createTask(title)              // → Task  (runs smart parsing)
+window.api.updateTask(id, patch)          // → Task
+window.api.deleteTask(id)                 // → void
+window.api.clearCompleted()               // → void
+window.api.reorderTasks(orderedIds)       // → void  (batch order update)
 
-// Window management
-await window.api.togglePin()                    // → {pinned: boolean}
-await window.api.getPin()                       // → {pinned: boolean}
-await window.api.winMin()                       // minimize
-await window.api.winClose()                     // close
+// Window
+window.api.togglePin()                    // → { pinned: boolean }
+window.api.getPin()                       // → { pinned: boolean }
+window.api.winMinimize()                  // → void
+window.api.winClose()                     // → void
 
-// Auth (stubs — Firebase auth is handled in renderer via Firebase SDK)
-await window.api.signInWithGoogle()             // → {error: 'use Firebase SDK'}
-await window.api.signOut()                      // → {ok: true}
-await window.api.getCurrentUser()               // → {user: null, showSignInButton: true}
-await window.api.checkStoredAuth()              // → {hasStoredAuth: false}
+// Preferences
+window.api.getUiPrefs()                   // → { theme: 'dark' | 'light' }
+window.api.setUiPrefs(prefs)              // → void
 
 // Notifications
-await window.api.getNotificationSettings()      // → Settings
-await window.api.updateNotificationSettings(s)  // → void
-await window.api.testNotification()             // → void
+window.api.getNotificationSettings()      // → NotificationSettings
+window.api.updateNotificationSettings(s)  // → void
+window.api.testNotification()             // → void
 ```
-
-> **Auth note:** The Tauri desktop app currently uses stub auth methods. Full Firebase auth for the desktop is implemented in the **web app** (`web/web-app.js`). The renderer handles auth UI for graceful degradation.
 
 ---
 
-## Firebase / Firestore
+## Adding a New IPC Command
 
-**Config file:** `web/firebase-config.js` — **excluded from git**. Copy from `web/firebase-config.template.js` and fill in your project values.
-
-**Firestore data model:**
-```
-/users/{userId}/tasks/{taskId}  ← all user task documents
-```
-
-**Security rules:** Each user can only read/write their own `/users/{uid}/**`.
-
-**Authentication:**
-- Web: `signInWithPopup()` (Google OAuth)
-- Desktop: Directs user to the web app for sign-in
-
----
-
-## Theming
-
-Styles use CSS variables — do not hardcode colors:
-```css
---bg-primary, --bg-secondary, --bg-card
---text-primary, --text-secondary, --text-muted
---accent-color, --accent-hover
---border-color, --shadow
-```
-
-Theme (`dark` / `light`) is toggled via `document.documentElement.classList.toggle('light', ...)` and persisted in `localStorage`.
-
----
-
-## Tauri Backend Notes
-
-- All IPC handlers live in `src-tauri/src/main.rs`, registered via `.invoke_handler(tauri::generate_handler![...])`.
-- App state is managed with `tauri::State<Mutex<AppState>>`.
-- File I/O resolves paths under `$APPDATA` — not Node.js paths.
-- Window: 420×700 (min 380×500), `decorations: false` (custom title bar).
-- API permissions are allowlisted in `tauri.conf.json` → `tauri.allowlist`.
-
-### Adding a new IPC command
-
-1. **Rust** (`src-tauri/src/main.rs`): Add `#[tauri::command] fn my_command(...)` and register in `generate_handler![]`
-2. **Preload** (`tauri-preload.js`): Expose via `window.api.myCommand = () => invoke('my_command')`
-3. **Renderer** (`renderer/renderer.js`): Call `await window.api.myCommand()`
-4. **Web** (`web/web-app.js`): Implement equivalent using Firebase SDK if applicable
-5. Update `TESTING_GUIDE.md` with manual test steps
+1. **Rust** (`src-tauri/src/main.rs`): add `#[tauri::command] async fn my_cmd(...)` and register it in `tauri::generate_handler![..., my_cmd]`
+2. **Preload** (`tauri-preload.js`): add `window.api.myCmd = (...) => invoke('my_cmd', { ... })`
+3. **Renderer** (`renderer/renderer.js`): call `await window.api.myCmd(...)`
+4. **Web** (`web/web-app.js`): add equivalent Firebase SDK logic if applicable
 
 ---
 
 ## Version Management
 
-Versions must stay in sync across three files — always use the release scripts, never edit manually:
+Three files must stay in sync — **always use the release scripts**:
 
 | File | Field |
 |------|-------|
@@ -251,51 +203,39 @@ Versions must stay in sync across three files — always use the release scripts
 
 ---
 
-## CI/CD (GitHub Actions)
+## Firebase / Firestore
 
-File: `.github/workflows/tauri-build.yml`
+**Config:** `web/firebase-config.js` — **gitignored**. Copy from `firebase-config.template.js`.
 
-**Triggers:** push to `main`, any `v*` tag, PRs to `main`, manual dispatch.
+**Data model:**
+```
+/users/{uid}/tasks/{taskId}   ← all task documents
+```
 
-**Matrix:** `windows-latest`, `macos-latest` (universal), `ubuntu-latest`.
-
-**Secrets required:**
-- `GH_TOKEN` — GitHub Personal Access Token with `repo` scope (for releases)
-- `GITHUB_TOKEN` — provided automatically by Actions
-
-Release artifacts:
-- Windows: `.msi`
-- macOS: `.dmg` + `.app`
-- Linux: `.deb` + `.AppImage`
+**Auth:** Google OAuth via `signInWithPopup()`. Each user can only access their own data.
 
 ---
 
-## Important Files Quick Reference
+## Theming
 
-| File | Purpose |
-|------|---------|
-| `tauri-preload.js` | Tauri API bridge (exposes `window.api` to renderer) |
-| `renderer/renderer.js` | All desktop UI logic — DOM, events, drag-drop |
-| `renderer/styles.css` | Desktop styles + CSS variable theme system |
-| `renderer/index.html` | HTML shell — loads preload + renderer |
-| `web/web-app.js` | Web app class — Firebase, auth, real-time sync |
-| `web/sw.js` | Service worker — cache-first, offline support |
-| `src-tauri/src/main.rs` | Tauri Rust backend — all IPC command handlers |
-| `src-tauri/tauri.conf.json` | Tauri configuration — permissions, window, bundle |
-| `increment-version.cjs` | Version bump utility (updates all 3 version files) |
-| `.github/workflows/tauri-build.yml` | CI/CD pipeline |
-| `TESTING_GUIDE.md` | Manual testing checklist |
-| `SETUP_INSTRUCTIONS.md` | Firebase + GitHub release setup |
+CSS variables only — never hardcode colors:
+```css
+--bg, --bg-2, --bg-3, --border
+--text, --text-2
+--accent, --accent-dim, --danger
+--badge-high, --badge-med, --badge-low, --badge-due, --badge-overdue
+```
+
+Toggle: set `data-theme="dark"|"light"` on `<html>`. Persisted in `ui-prefs.json` (desktop) or `localStorage` (web).
 
 ---
 
 ## What NOT to Do
 
-- **Do not add a JS framework** (React, Vue, etc.) — intentionally vanilla
-- **Do not add a bundler** (webpack, Vite) — scripts load directly
-- **Do not commit `web/firebase-config.js`** — it contains secrets and is gitignored
-- **Do not re-introduce Electron** — Tauri is the sole desktop target
-- **Do not push release tags manually** — use `npm run release:*` scripts
-- **Do not mix CJS and ESM** in the same file — follow the `.cjs`/`.js` extension convention
-- **Do not hardcode colors** — use CSS variables for all theme-sensitive values
-- **Do not bump versions manually** — `increment-version.cjs` keeps all three config files in sync
+- **No JS framework** (React, Vue, Svelte) — intentionally vanilla
+- **No bundler** (webpack, Vite) — scripts load directly from disk
+- **No committing `firebase-config.js`** — contains secrets
+- **No re-introducing Electron** — Tauri is the only desktop target
+- **No manual version bumps** — use `increment-version.cjs`
+- **No hardcoded colors** — use CSS variables
+- **No mismatching IPC** — every `invoke('cmd')` in preload needs a `#[tauri::command] fn cmd` in Rust

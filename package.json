@@ -1,10 +1,10 @@
 {
   "name": "upnext",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "An always-on-top, minimalist to-do app that keeps tasks visible so you capture and finish work faster.",
-  "author": "Abhishek Ingle (Abhishekingle662)",
+  "description": "Minimalist always-on-top task manager — Tauri desktop + Firebase PWA",
+  "author": "Abhishek Ingle",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -12,24 +12,20 @@
   },
   "homepage": "https://github.com/Abhishekingle662/UpNext",
   "scripts": {
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "serve-web": "node serve-web.js",
-    "setup": "node setup.js",
-    "version:patch": "node increment-version.cjs patch",
-    "version:minor": "node increment-version.cjs minor",
-    "version:major": "node increment-version.cjs major",
-    "release:patch": "node increment-version.cjs patch && git add -A && git commit -m \"chore: bump to patch version\" && git push origin main --tags",
-    "release:minor": "node increment-version.cjs minor && git add -A && git commit -m \"chore: bump to minor version\" && git push origin main --tags",
-    "release:major": "node increment-version.cjs major && git add -A && git commit -m \"chore: bump to major version\" && git push origin main --tags"
+    "tauri":        "tauri",
+    "tauri:dev":    "tauri dev",
+    "tauri:build":  "tauri build",
+    "serve-web":    "node serve-web.js",
+    "setup":        "node setup.js",
+    "release:patch": "node increment-version.cjs patch && git add -A && git commit -m \"chore: bump patch version\" && git push origin main --tags",
+    "release:minor": "node increment-version.cjs minor && git add -A && git commit -m \"chore: bump minor version\" && git push origin main --tags",
+    "release:major": "node increment-version.cjs major && git add -A && git commit -m \"chore: bump major version\" && git push origin main --tags"
   },
   "dependencies": {
     "@tauri-apps/api": "^1.6.0",
     "firebase": "^10.7.1"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^1.6.3",
-    "sharp": "^0.34.3"
+    "@tauri-apps/cli": "^1.6.3"
   }
 }

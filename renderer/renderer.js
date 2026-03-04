@@ -1,468 +1,314 @@
-const $ = (sel, root=document) => root.querySelector(sel);
+'use strict';
 
-// Elements
-const formEl = $('#newTaskForm');
-const inputEl = $('#taskInput');
-const listEl = $('#list');
-const emptyEl = $('#empty');
-const countEl = $('#count');
-const clearBtn = $('#clearCompleted');
-const pinBtn = $('#pinBtn');
+// ── DOM refs ──────────────────────────────────────────────────────────────
+const $ = (sel) => document.querySelector(sel);
+const taskInput   = $('#taskInput');
+const taskList    = $('#taskList');
+const emptyState  = $('#emptyState');
+const taskCount   = $('#taskCount');
+const addForm     = $('#addForm');
+const clearBtn    = $('#clearBtn');
 const settingsBtn = $('#settingsBtn');
-const themeBtn = $('#themeBtn');
-const minBtn = $('#minBtn');
-const closeBtn = $('#closeBtn');
-const tpl = document.getElementById('itemTpl');
-
-// Settings modal elements
-const settingsModal = $('#settingsModal');
-const closeSettings = $('#closeSettings');
-const notificationsEnabled = $('#notificationsEnabled');
-const alertOnTime = $('#alertOnTime');
-const alert5min = $('#alert5min');
-const alert15min = $('#alert15min');
-const soundEnabled = $('#soundEnabled');
-const testNotification = $('#testNotification');
-
-let tasks = [];
-
-function updateCount() {
-	const left = tasks.filter(t => !t.completed).length;
-	countEl.textContent = left === 0 ? 'All done 🎉' : `${left} to do`;
-	emptyEl.hidden = tasks.length !== 0;
-}
-
-function makeItem(task) {
-	const node = tpl.content.firstElementChild.cloneNode(true);
-	const cb = $('input[type="checkbox"]', node);
-	const title = $('[data-role="title"]', node);
-	const edit = $('[data-role="edit"]', node);
-	const del = $('[data-role="delete"]', node);
-	const dueEl = $('[data-role="due"]', node);
-	const prioEl = $('[data-role="priority"]', node);
-	const dragHandle = $('[data-role="drag"]', node);
-
-	cb.checked = !!task.completed;
-	title.textContent = task.title;
-	title.classList.toggle('completed', task.completed);
-
-	// Meta badges
-	function formatDue(ts) {
-		if (!ts) return '';
-		const d = new Date(ts);
-		const now = new Date();
-		const sameDay = d.toDateString() === now.toDateString();
-		const tomorrow = new Date(now);
-		tomorrow.setDate(now.getDate() + 1);
-		const isTomorrow = d.toDateString() === tomorrow.toDateString();
-		const hh = String(d.getHours()).padStart(2, '0');
-		const mm = String(d.getMinutes()).padStart(2, '0');
-		const time = `${hh}:${mm}`;
-		if (sameDay) return `today ${time}`;
-		if (isTomorrow) return `tomorrow ${time}`;
-		const diffDays = Math.round((d.setHours(0,0,0,0) - now.setHours(0,0,0,0)) / (24*60*60*1000));
-		if (diffDays > 0 && diffDays <= 7) {
-			return d.toLocaleDateString(undefined, { weekday: 'long' }) + ' ' + time;
-		}
-		return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + time;
-	}
-
-	if (dueEl) {
-		const due = task.dueAt;
-		if (due) {
-			dueEl.textContent = formatDue(due);
-			dueEl.hidden = false;
-			dueEl.classList.add('badge', 'due');
-			const overdue = Date.now() > due;
-			dueEl.classList.toggle('overdue', overdue);
-			dueEl.classList.toggle('soon', !overdue);
-		} else {
-			dueEl.hidden = true;
-		}
-	}
-
-	if (prioEl) {
-		const p = Number(task.priority || 0);
-		if (p > 0) {
-			prioEl.textContent = p === 3 ? 'P1' : p === 2 ? 'P2' : 'P3';
-			prioEl.hidden = false;
-			prioEl.className = 'badge priority ' + (p === 3 ? 'p3' : p === 2 ? 'p2' : 'p1');
-		} else {
-			prioEl.hidden = true;
-		}
-	}
-
-	cb.addEventListener('change', async () => {
-		const res = await window.api.updateTask(task.id, { completed: cb.checked });
-		if (res.ok) {
-			const i = tasks.findIndex(t => t.id === task.id);
-			tasks[i] = res.task;
-			render();
-		}
-	});
-
-	// Enter edit mode on double click
-	title.addEventListener('dblclick', () => {
-		node.classList.add('editing');
-		edit.value = task.title;
-		edit.focus();
-		edit.selectionStart = edit.value.length;
-	});
-
-	// commit edit on Enter / blur; ESC cancels
-	edit.addEventListener('keydown', (e) => {
-		if (e.key === 'Escape') { node.classList.remove('editing'); }
-		if (e.key === 'Enter') { edit.blur(); }
-	});
-	edit.addEventListener('blur', async () => {
-		const newTitle = edit.value.trim();
-		node.classList.remove('editing');
-		if (!newTitle || newTitle === task.title) return;
-		const res = await window.api.updateTask(task.id, { title: newTitle });
-		if (res.ok) {
-			const i = tasks.findIndex(t => t.id === task.id);
-			tasks[i] = res.task;
-			render();
-		}
-	});
-
-	del.addEventListener('click', async () => {
-		const res = await window.api.deleteTask(task.id);
-		if (res.ok) {
-			tasks = tasks.filter(t => t.id !== task.id);
-			render();
-		}
-	});
-
-	// Drag and drop functionality
-	node.dataset.taskId = task.id;
-	
-	node.addEventListener('dragstart', (e) => {
-		node.classList.add('dragging');
-		e.dataTransfer.setData('text/plain', task.id);
-		e.dataTransfer.effectAllowed = 'move';
-	});
-
-	node.addEventListener('dragend', () => {
-		node.classList.remove('dragging');
-		document.querySelectorAll('.item').forEach(item => item.classList.remove('drag-over'));
-	});
-
-	node.addEventListener('dragover', (e) => {
-		e.preventDefault();
-		e.dataTransfer.dropEffect = 'move';
-		node.classList.add('drag-over');
-	});
-
-	node.addEventListener('dragleave', () => {
-		node.classList.remove('drag-over');
-	});
-
-	node.addEventListener('drop', async (e) => {
-		e.preventDefault();
-		node.classList.remove('drag-over');
-		
-		const draggedId = e.dataTransfer.getData('text/plain');
-		const targetId = task.id;
-		
-		if (draggedId !== targetId) {
-			await reorderTasks(draggedId, targetId);
-		}
-	});
-
-	return node;
-}
-
-async function reorderTasks(draggedId, targetId) {
-	const draggedIndex = tasks.findIndex(t => t.id === draggedId);
-	const targetIndex = tasks.findIndex(t => t.id === targetId);
-	
-	if (draggedIndex === -1 || targetIndex === -1) return;
-	
-	// Remove dragged task and insert at target position
-	const [draggedTask] = tasks.splice(draggedIndex, 1);
-	tasks.splice(targetIndex, 0, draggedTask);
-	
-	// Update order field for all tasks
-	for (let i = 0; i < tasks.length; i++) {
-		tasks[i].order = i;
-		await window.api.updateTask(tasks[i].id, { order: i });
-	}
-	
-	render();
-}
-
-function render() {
-	listEl.innerHTML = '';
-	const frag = document.createDocumentFragment();
-	for (const t of tasks) frag.appendChild(makeItem(t));
-	listEl.appendChild(frag);
-	updateCount();
-}
-
-// Form submit
-formEl.addEventListener('submit', async (e) => {
-	e.preventDefault();
-	const val = inputEl.value.trim();
-	if (!val) return;
-	const res = await window.api.createTask(val);
-	if (res.ok) {
-		tasks.unshift(res.task);
-		inputEl.value = '';
-		sortInPlace(tasks);
-		render();
-	}
-});
-
-// Clear completed
-clearBtn.addEventListener('click', async () => {
-	const res = await window.api.clearCompleted();
-	if (res.ok) {
-		tasks = tasks.filter(t => !t.completed);
-		render();
-	}
-});
-
-// Window controls
-pinBtn.addEventListener('click', async () => {
-	const { pinned } = await window.api.togglePin();
-	pinBtn.style.opacity = pinned ? 1 : 0.6;
-});
-minBtn.addEventListener('click', () => window.api.winMin());
-closeBtn.addEventListener('click', () => window.api.winClose());
-
-// Theme toggle
-function applyTheme(theme) {
-	document.documentElement.classList.toggle('light', theme === 'light');
-}
-
-const storedTheme = localStorage.getItem('theme') || 'dark';
-applyTheme(storedTheme);
-
-themeBtn.addEventListener('click', () => {
-	const next = document.documentElement.classList.contains('light') ? 'dark' : 'light';
-	applyTheme(next);
-	localStorage.setItem('theme', next);
-});
+const themeBtn    = $('#themeBtn');
+const pinBtn      = $('#pinBtn');
+const minBtn      = $('#minBtn');
+const closeBtn    = $('#closeBtn');
 
 // Settings modal
-let notificationSettings = null;
+const settingsModal  = $('#settingsModal');
+const closeSettings  = $('#closeSettings');
+const notifsEnabled  = $('#notifsEnabled');
+const alertOnTime    = $('#alertOnTime');
+const alert5min      = $('#alert5min');
+const alert15min     = $('#alert15min');
+const soundEnabled   = $('#soundEnabled');
+const testNotifBtn   = $('#testNotifBtn');
 
-async function loadNotificationSettings() {
-	try {
-		notificationSettings = await window.api.getNotificationSettings();
-		updateSettingsUI();
-	} catch (error) {
-		console.error('Failed to load notification settings:', error);
-	}
+// Task item template
+const taskTpl = $('#taskTpl');
+
+// ── State ─────────────────────────────────────────────────────────────────
+let tasks = [];
+let dragSrcId = null;
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function sortTasks(list) {
+  return [...list].sort((a, b) => {
+    const ao = a.order ?? a.createdAt;
+    const bo = b.order ?? b.createdAt;
+    return ao - bo;
+  });
 }
 
-function updateSettingsUI() {
-	if (!notificationSettings) return;
-	
-	notificationsEnabled.checked = notificationSettings.enabled;
-	soundEnabled.checked = notificationSettings.sound;
-	
-	const beforeMinutes = notificationSettings.beforeMinutes || [0, 5, 15];
-	alertOnTime.checked = beforeMinutes.includes(0);
-	alert5min.checked = beforeMinutes.includes(5);
-	alert15min.checked = beforeMinutes.includes(15);
+function formatDue(ms) {
+  if (!ms) return null;
+  const now = Date.now();
+  const diff = ms - now;
+  const date = new Date(ms);
+  const abs = Math.abs(diff);
+  const mins = Math.floor(abs / 60000);
+  const hours = Math.floor(abs / 3600000);
+  const days = Math.floor(abs / 86400000);
+
+  if (diff < 0) {
+    if (mins < 60)  return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    return `${days}d ago`;
+  }
+  if (mins < 60)  return `in ${mins}m`;
+  if (hours < 24) return `in ${hours}h`;
+  if (days === 0) return 'today';
+  if (days === 1) return 'tomorrow';
+  if (days < 7)   return `${date.toLocaleDateString(undefined, { weekday: 'short' })}`;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-async function saveNotificationSettings() {
-	if (!notificationSettings) return;
-	
-	const beforeMinutes = [];
-	if (alertOnTime.checked) beforeMinutes.push(0);
-	if (alert5min.checked) beforeMinutes.push(5);
-	if (alert15min.checked) beforeMinutes.push(15);
-	
-	const newSettings = {
-		...notificationSettings,
-		enabled: notificationsEnabled.checked,
-		sound: soundEnabled.checked,
-		beforeMinutes: beforeMinutes
-	};
-	
-	try {
-		await window.api.updateNotificationSettings(newSettings);
-		notificationSettings = newSettings;
-	} catch (error) {
-		console.error('Failed to save notification settings:', error);
-	}
+function priorityLabel(p) {
+  if (p === 3) return '!!! High';
+  if (p === 2) return '!!  Med';
+  if (p === 1) return '!   Low';
+  return '';
 }
 
-settingsBtn.addEventListener('click', async (e) => {
-	e.preventDefault();
-	await loadNotificationSettings();
-	settingsModal.style.display = 'flex';
-	settingsModal.hidden = false;
+// ── Render ────────────────────────────────────────────────────────────────
+function render() {
+  taskList.innerHTML = '';
+  const sorted = sortTasks(tasks);
+  const active = sorted.filter(t => !t.completed);
+  const done   = sorted.filter(t => t.completed);
+  const ordered = [...active, ...done];
+
+  for (const task of ordered) {
+    const node = taskTpl.content.cloneNode(true);
+    const li   = node.querySelector('.task');
+
+    li.dataset.id = task.id;
+    if (task.completed) li.classList.add('completed');
+
+    const check = node.querySelector('[data-role="check"]');
+    check.checked = task.completed;
+
+    const titleEl = node.querySelector('[data-role="title"]');
+    titleEl.textContent = task.title;
+
+    // Due badge
+    const dueBadge = node.querySelector('[data-role="due"]');
+    if (task.dueAt) {
+      const label = formatDue(task.dueAt);
+      if (label) {
+        dueBadge.textContent = label;
+        if (task.dueAt < Date.now()) dueBadge.classList.add('overdue');
+        dueBadge.hidden = false;
+      }
+    }
+
+    // Priority badge
+    const prioBadge = node.querySelector('[data-role="priority"]');
+    if (task.priority) {
+      prioBadge.textContent = priorityLabel(task.priority);
+      prioBadge.classList.add(`p${task.priority}`);
+      prioBadge.hidden = false;
+    }
+
+    attachTaskEvents(li, task);
+    taskList.appendChild(node);
+  }
+
+  const activeCount = active.length;
+  taskCount.textContent = activeCount === 0
+    ? 'All done!'
+    : `${activeCount} task${activeCount === 1 ? '' : 's'} left`;
+
+  emptyState.hidden = tasks.length > 0;
+}
+
+// ── Task events ───────────────────────────────────────────────────────────
+function attachTaskEvents(li, task) {
+  // Complete toggle
+  li.querySelector('[data-role="check"]').addEventListener('change', async (e) => {
+    await window.api.updateTask(task.id, { completed: e.target.checked });
+    await reload();
+  });
+
+  // Double-click to edit
+  const titleEl  = li.querySelector('[data-role="title"]');
+  const editInput = li.querySelector('[data-role="edit"]');
+
+  titleEl.addEventListener('dblclick', () => {
+    titleEl.hidden   = true;
+    editInput.hidden = false;
+    editInput.value  = task.title;
+    editInput.focus();
+    editInput.select();
+  });
+
+  const commitEdit = async () => {
+    const newTitle = editInput.value.trim();
+    if (newTitle && newTitle !== task.title) {
+      await window.api.updateTask(task.id, { title: newTitle });
+    }
+    await reload();
+  };
+
+  editInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter')  { e.preventDefault(); commitEdit(); }
+    if (e.key === 'Escape') { reload(); }
+  });
+  editInput.addEventListener('blur', commitEdit);
+
+  // Delete
+  li.querySelector('[data-role="delete"]').addEventListener('click', async () => {
+    await window.api.deleteTask(task.id);
+    await reload();
+  });
+
+  // Drag & drop
+  li.addEventListener('dragstart', (e) => {
+    dragSrcId = task.id;
+    li.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  li.addEventListener('dragend', () => {
+    dragSrcId = null;
+    document.querySelectorAll('.task').forEach(el => {
+      el.classList.remove('dragging', 'drag-over');
+    });
+  });
+  li.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragSrcId !== task.id) li.classList.add('drag-over');
+  });
+  li.addEventListener('dragleave', () => li.classList.remove('drag-over'));
+  li.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    li.classList.remove('drag-over');
+    if (!dragSrcId || dragSrcId === task.id) return;
+
+    const items = [...taskList.querySelectorAll('.task')];
+    const srcEl = taskList.querySelector(`[data-id="${dragSrcId}"]`);
+    if (!srcEl) return;
+
+    const tgtIdx = items.indexOf(li);
+    const srcIdx = items.indexOf(srcEl);
+    if (srcIdx < tgtIdx) li.after(srcEl); else li.before(srcEl);
+
+    const newOrder = [...taskList.querySelectorAll('.task')].map(el => el.dataset.id);
+    await window.api.reorderTasks(newOrder);
+    await reload();
+  });
+}
+
+// ── Data loading ──────────────────────────────────────────────────────────
+async function reload() {
+  tasks = await window.api.loadTasks();
+  render();
+}
+
+// ── Form submission ───────────────────────────────────────────────────────
+addForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const title = taskInput.value.trim();
+  if (!title) return;
+  taskInput.value = '';
+  await window.api.createTask(title);
+  await reload();
 });
 
-closeSettings.addEventListener('click', (e) => {
-	e.preventDefault();
-	e.stopPropagation();
-	settingsModal.style.display = 'none';
-	settingsModal.hidden = true;
+// ── Toolbar buttons ───────────────────────────────────────────────────────
+clearBtn.addEventListener('click', async () => {
+  await window.api.clearCompleted();
+  await reload();
 });
 
-// Close modal when clicking outside
-settingsModal.addEventListener('click', (e) => {
-	if (e.target === settingsModal) {
-		e.preventDefault();
-		settingsModal.style.display = 'none';
-		settingsModal.hidden = true;
-	}
+// ── Window controls ───────────────────────────────────────────────────────
+minBtn.addEventListener('click',   () => window.api.winMinimize());
+closeBtn.addEventListener('click', () => window.api.winClose());
+
+// ── Theme toggle ──────────────────────────────────────────────────────────
+async function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  themeBtn.title = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+}
+
+themeBtn.addEventListener('click', async () => {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  const next = current === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  await window.api.setUiPrefs({ theme: next });
 });
 
-// Close modal on Escape key
+// ── Pin toggle ────────────────────────────────────────────────────────────
+async function applyPin(pinned) {
+  pinBtn.classList.toggle('pinned', pinned);
+  pinBtn.title = pinned ? 'Unpin window' : 'Always on top';
+}
+
+pinBtn.addEventListener('click', async () => {
+  const { pinned } = await window.api.togglePin();
+  applyPin(pinned);
+});
+
+// ── Settings modal ────────────────────────────────────────────────────────
+settingsBtn.addEventListener('click', async () => {
+  const s = await window.api.getNotificationSettings();
+  notifsEnabled.checked = s.enabled;
+  alertOnTime.checked   = s.beforeMinutes?.includes(0);
+  alert5min.checked     = s.beforeMinutes?.includes(5);
+  alert15min.checked    = s.beforeMinutes?.includes(15);
+  soundEnabled.checked  = s.sound;
+  settingsModal.hidden  = false;
+});
+
+closeSettings.addEventListener('click', () => { settingsModal.hidden = true; });
+settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) settingsModal.hidden = true; });
+
+async function saveSettings() {
+  const before = [];
+  if (alertOnTime.checked) before.push(0);
+  if (alert5min.checked)   before.push(5);
+  if (alert15min.checked)  before.push(15);
+  await window.api.updateNotificationSettings({
+    enabled: notifsEnabled.checked,
+    beforeMinutes: before,
+    sound: soundEnabled.checked,
+  });
+}
+
+[notifsEnabled, alertOnTime, alert5min, alert15min, soundEnabled]
+  .forEach(el => el.addEventListener('change', saveSettings));
+
+testNotifBtn.addEventListener('click', () => window.api.testNotification());
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────
 document.addEventListener('keydown', (e) => {
-	if (e.key === 'Escape' && !settingsModal.hidden) {
-		e.preventDefault();
-		settingsModal.style.display = 'none';
-		settingsModal.hidden = true;
-	}
+  if (e.key === 'Escape' && !settingsModal.hidden) {
+    settingsModal.hidden = true;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === ',') {
+    settingsBtn.click();
+  }
 });
 
-// Save settings when changed
-[notificationsEnabled, alertOnTime, alert5min, alert15min, soundEnabled].forEach(input => {
-	input.addEventListener('change', saveNotificationSettings);
-});
+// ── Bootstrap ─────────────────────────────────────────────────────────────
+async function init() {
+  // Restore theme preference
+  try {
+    const prefs = await window.api.getUiPrefs();
+    if (prefs?.theme) applyTheme(prefs.theme);
+  } catch (_) { /* use default */ }
 
-testNotification.addEventListener('click', async () => {
-	try {
-		await window.api.testNotification();
-	} catch (error) {
-		console.error('Failed to test notification:', error);
-	}
-});
+  // Restore pin state
+  try {
+    const { pinned } = await window.api.getPin();
+    applyPin(pinned);
+  } catch (_) { /* ignore */ }
 
-// Authentication elements
-const signInBtn = document.getElementById('signInBtn');
-const signOutBtn = document.getElementById('signOutBtn');
-const userInfo = document.getElementById('userInfo');
-const userPhoto = document.getElementById('userPhoto');
-const userName = document.getElementById('userName');
-
-// Authentication event handlers
-signInBtn?.addEventListener('click', async () => {
-	try {
-		const result = await window.api.signInWithGoogle();
-		if (result.success) {
-			updateUserUI(result.user, false);
-			tasks = await window.api.loadTasks();
-			sortInPlace(tasks);
-			render();
-		}
-	} catch (error) {
-		console.error('Sign in failed:', error);
-		alert('Sign in failed. Please try again or use the web app at https://upnext-97a2a.web.app');
-	}
-});
-
-signOutBtn?.addEventListener('click', async () => {
-	try {
-		await window.api.signOut();
-		// Get updated UI state after sign-out
-		const userState = await window.api.getCurrentUser();
-		updateUserUI(null, userState.showSignInButton);
-		tasks = [];
-		render();
-	} catch (error) {
-		console.error('Sign out failed:', error);
-	}
-});
-
-// Update user interface based on authentication state
-function updateUserUI(user, showSignInButton = true) {
-	if (user && !user.isAnonymous) {
-		// Show user info
-		userInfo.hidden = false;
-		signInBtn.hidden = true;
-		
-		userName.textContent = user.displayName || user.email;
-		if (user.photoURL) {
-			userPhoto.src = user.photoURL;
-			userPhoto.hidden = false;
-		} else {
-			userPhoto.hidden = true;
-		}
-	} else {
-		// Show sign in button based on environment (production vs development)
-		userInfo.hidden = true;
-		signInBtn.hidden = !showSignInButton;
-	}
+  await reload();
 }
 
-async function loadAndRenderTasks() {
-	try {
-		console.log('🔄 Loading tasks from API...');
-		tasks = await window.api.loadTasks();
-		console.log('✅ Tasks loaded:', tasks.length, 'tasks');
-		sortInPlace(tasks);
-		render();
-		console.log('✅ Tasks rendered successfully');
-	} catch (error) {
-		console.error('❌ Failed to load tasks:', error);
-	}
-}
-
-// Init
-(async function init() {
-	// Check current user state
-	try {
-		console.log('🚀 Initializing renderer...');
-		
-		const userState = await window.api.getCurrentUser();
-		console.log('📋 Current user state:', userState);
-		
-		updateUserUI(userState.user, userState.showSignInButton);
-		
-		if (!userState.user) {
-			// No user found, try to check for stored auth
-			console.log('❓ No user found, checking for stored authentication...');
-			try {
-				await window.api.checkStoredAuth();
-				console.log('✅ Stored auth check completed');
-			} catch (error) {
-				console.error('❌ Stored auth check failed:', error);
-			}
-		}
-	} catch (error) {
-		console.log('No user state available');
-		updateUserUI(null, true); // Default to showing sign-in button on error
-	}
-	
-	await loadAndRenderTasks();
-	
-	// Reflect current pin state
-	try {
-		const { pinned } = await window.api.getPin();
-		pinBtn.style.opacity = pinned ? 1 : 0.6;
-	} catch {}
-})();
-
-// Local sort helper - respect manual order, then completion status
-function sortInPlace(arr) {
-	arr.sort((a, b) => {
-		// Completed tasks go to bottom
-		const byCompleted = Number(a.completed) - Number(b.completed);
-		if (byCompleted) return byCompleted;
-		
-		// For incomplete tasks, use manual order (lower order = higher priority)
-		const aOrder = Number(a.order ?? 999999);
-		const bOrder = Number(b.order ?? 999999);
-		if (aOrder !== bOrder) return aOrder - bOrder;
-		
-		// Fallback to creation time for tasks without order
-		return (a.createdAt || 0) - (b.createdAt || 0);
-	});
-}
-
-// Auto-refresh ordering as time passes (e.g., a task becomes overdue)
-setInterval(() => {
-	const before = JSON.stringify(tasks.map(t => t.id));
-	sortInPlace(tasks);
-	const after = JSON.stringify(tasks.map(t => t.id));
-	if (before !== after) render();
-}, 60 * 1000);
+// Wait for tauri-preload.js module to finish binding window.api
+window.addEventListener('DOMContentLoaded', () => {
+  // Give the module script a tick to execute
+  setTimeout(init, 0);
+});

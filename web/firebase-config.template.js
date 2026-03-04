@@ -1,11 +1,11 @@
-// Firebase configuration template for web app
-// Copy this to firebase-config.js and replace with your actual Firebase project credentials
+// Copy this file to firebase-config.js and fill in your Firebase project values.
+// firebase-config.js is gitignored — never commit real credentials.
+// Get these values from: Firebase Console → Project Settings → Your Apps → Web app
 export const firebaseConfig = {
-  apiKey: "your-api-key-here",
-  authDomain: "your-project.firebaseapp.com",
-  projectId: "your-project-id",
-  storageBucket: "your-project.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "your-app-id",
-  measurementId: "your-measurement-id" // Optional
+  apiKey:            'YOUR_API_KEY',
+  authDomain:        'YOUR_PROJECT_ID.firebaseapp.com',
+  projectId:         'YOUR_PROJECT_ID',
+  storageBucket:     'YOUR_PROJECT_ID.appspot.com',
+  messagingSenderId: 'YOUR_SENDER_ID',
+  appId:             'YOUR_APP_ID',
 };
